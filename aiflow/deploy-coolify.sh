@@ -6,21 +6,23 @@
 # with exact next steps rather than faking full end-to-end automation.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/scripts/aiflow/deploy-coolify.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-coolify.sh | sudo bash
 #
 # With optional pre-fill values for the printed copy-paste block (needs
 # "bash -s --" to pass flags through a pipe):
-#   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/scripts/aiflow/deploy-coolify.sh \
+#   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-coolify.sh \
 #     | sudo bash -s -- --domain client.com --gemini-api-key ... --admin-email owner@client.com
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
-# This is a mirror: the canonical copy lives in the private AiFlow repo's
-# scripts/ directory, see docs/DEPLOYMENTS.md §4 there for why this public
-# mirror exists (AiFlow itself is private, so raw.githubusercontent.com
-# can't serve a client anything from it without per-client auth).
-# docker-compose.prod.yml lives alongside this script under config/, see
-# SCRIPT_REPO_ROOT below.
+# This same file lives in two places, unchanged: here (scripts/, companion
+# files one directory up at this repo's root) and mirrored verbatim to the
+# public maelqo/scripts repo (aiflow/, companion files alongside it under
+# aiflow/config/), synced by .github/workflows/sync-scripts.yml. The
+# mirror exists because AiFlow itself is private, so raw.githubusercontent.com
+# can't serve a client anything from it without per-client auth, see
+# docs/DEPLOYMENTS.md §4. fetch_file() below tries both layouts so this
+# one file works correctly in either home with no per-copy editing.
 REPO_RAW_BASE="${REPO_RAW_BASE:-https://raw.githubusercontent.com/maelqo/scripts}"
 REPO_REF="main"
 DIR="./aiflow"
@@ -89,17 +91,19 @@ gen_password() {
 
 # Resolved once, before any `cd`, since BASH_SOURCE is a path relative to
 # the invocation directory and stops resolving correctly once we move.
-SCRIPT_REPO_ROOT=""
+SCRIPT_DIR=""
 case "${BASH_SOURCE[0]:-}" in
-  */*) SCRIPT_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" ;;
+  */*) SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" ;;
 esac
 
 fetch_file() {
   local rel="$1" dest="$2"
-  if [ -n "$SCRIPT_REPO_ROOT" ] && [ -f "$SCRIPT_REPO_ROOT/config/$rel" ]; then
-    cp "$SCRIPT_REPO_ROOT/config/$rel" "$dest"
+  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/config/$rel" ]; then
+    cp "$SCRIPT_DIR/config/$rel" "$dest"
+  elif [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../$rel" ]; then
+    cp "$SCRIPT_DIR/../$rel" "$dest"
   else
-    curl -fsSL "$REPO_RAW_BASE/$REPO_REF/scripts/aiflow/config/$rel" -o "$dest"
+    curl -fsSL "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest"
   fi
 }
 
