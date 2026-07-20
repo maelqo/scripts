@@ -1,0 +1,48 @@
+# Same as docker-compose.prod.yml, plus a Caddy reverse proxy that issues
+# and renews Let's Encrypt certificates automatically. Use this instead of
+# docker-compose.prod.yml on a bare VPS with no reverse proxy of its own
+# (e.g. manual method in docs/DEPLOYMENTS.md §3). Not needed behind a PaaS like
+# Coolify that already terminates TLS for you.
+#
+# backend/admin are intentionally NOT published on host ports here; only
+# Caddy is publicly reachable (80/443);  it reaches backend/admin over the
+# internal Compose network.
+services:
+  backend:
+    image: ghcr.io/maelqo/aiflow-backend:1
+    env_file:
+      - .env
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+    expose:
+      - "8000"
+    volumes:
+      - aiflow_data:/app/backend/data
+    restart: unless-stopped
+
+  admin:
+    image: ghcr.io/maelqo/aiflow-admin:1
+    environment:
+      API_BASE: ${PUBLIC_BASE_URL}
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on:
+      - backend
+      - admin
+    restart: unless-stopped
+
+volumes:
+  aiflow_data:
+  caddy_data:

@@ -1,0 +1,12 @@
+# Copy to Caddyfile and replace both hostnames with your own domains, then
+# point their DNS A/AAAA records at this server before starting Caddy --
+# it issues Let's Encrypt certificates on first request and renews them
+# automatically. Used by docker-compose.caddy.yml, see docs/DEPLOYMENTS.md §3.
+
+api.client-domain.com {
+    reverse_proxy backend:8000
+}
+
+admin.client-domain.com {
+    reverse_proxy admin:80
+}

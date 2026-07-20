@@ -1,0 +1,35 @@
+# Client deployment compose file: pulls versioned, pre-built images from
+# GitHub Container Registry instead of building from source (that's what
+# the repo's own docker-compose.yml is for). See docs/DEPLOYMENTS.md.
+#
+# Pin the tag to match your change-control comfort level: ":1" tracks all
+# 1.x releases, ":1.4" tracks patch releases within 1.4, an exact ":1.4.2"
+# never moves until you bump it yourself.
+services:
+  backend:
+    image: ghcr.io/maelqo/aiflow-backend:1
+    env_file:
+      - .env
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+    ports:
+      - "8000:8000"
+    volumes:
+      - aiflow_data:/app/backend/data
+    restart: unless-stopped
+
+  admin:
+    image: ghcr.io/maelqo/aiflow-admin:1
+    environment:
+      # Read at container start, not baked into the JS bundle; this is
+      # what lets the same published image work for every client without a
+      # rebuild. See admin/docker-entrypoint.sh.
+      API_BASE: ${PUBLIC_BASE_URL}
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  aiflow_data:
