@@ -1,27 +1,18 @@
 #!/usr/bin/env bash
 # A fresh VPS, Docker Compose, and Caddy
-# in front issuing/renewing Let's Encrypt certificates automatically. Full
-# end-to-end including public TLS, unlike deploy-compose.sh.
+# in front issuing/renewing Let's Encrypt certificates automatically. 
 #
 # Usage (env vars):
 #   GEMINI_API_KEY=... AIFLOW_ADMIN_EMAIL=owner@client.com \
 #     curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-caddy.sh | bash
 #
-# Usage (flags -- note the "bash -s --", plain flags after "| bash" are
-# silently swallowed since bash reads the script itself from stdin):
+# Usage (flags):
 #   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-caddy.sh \
 #     | bash -s -- --domain client.com --gemini-api-key ... --admin-email owner@client.com
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
-# This same file lives in two places, unchanged: here (scripts/, companion
-# files one directory up at this repo's root) and mirrored verbatim to the
-# public maelqo/scripts repo (aiflow/, companion files alongside it under
-# aiflow/config/), synced by .github/workflows/sync-scripts.yml. The
-# mirror exists because AiFlow itself is private, so raw.githubusercontent.com
-# can't serve a client anything from it without per-client auth, see
-# docs/DEPLOYMENTS.md §4. fetch_file() below tries both layouts so this
-# one file works correctly in either home with no per-copy editing.
+
 REPO_RAW_BASE="${REPO_RAW_BASE:-https://raw.githubusercontent.com/maelqo/scripts}"
 REPO_REF="main"
 DIR="./aiflow"
@@ -41,8 +32,8 @@ usage() {
   cat <<'EOF'
 Usage: deploy-caddy.sh [options]
 
-Deploys AiFlow behind Caddy on a fresh VPS, with automatic Let's Encrypt
-TLS (docs/DEPLOYMENTS.md §3). One root domain, two subdomains.
+Deploys AiFlow behind Caddy on a fresh VPS, with automatic Let's Encrypt TLS.
+One root domain, two subdomains.
 
 Required (flag or env var):
   --gemini-api-key KEY        GEMINI_API_KEY
@@ -59,7 +50,7 @@ Optional:
   --twilio-api-key-sid ...     TWILIO_API_KEY_SID
   --twilio-api-key-secret ...  TWILIO_API_KEY_SECRET
   --ghcr-username USER         GHCR_USERNAME     (AiFlow's own GHCR account, for private
-                                                  images; not the client's, see docs/DEPLOYMENTS.md §1.1)
+                                                  images; not the client's)
   --ghcr-token TOKEN           GHCR_TOKEN        (the read-only PAT issued for this client)
   --version TAG                AIFLOW_VERSION    (default: 1, tracks all 1.x releases;
                                                   use "latest" or an exact "1.4.2" to opt out of that)

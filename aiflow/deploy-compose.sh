@@ -1,28 +1,16 @@
 #!/usr/bin/env bash
 # Pulls the pre-built images and brings them up via Docker Compose. 
-# Does NOT set up a reverse proxy or TLS, put
-# one in front yourself or use
-# deploy-caddy.sh / Coolify instead if you don't have one already.
 #
 # Usage (env vars):
 #   GEMINI_API_KEY=... AIFLOW_ADMIN_EMAIL=owner@client.com \
 #     curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-compose.sh | bash
 #
-# Usage (flags -- note the "bash -s --", plain flags after "| bash" are
-# silently swallowed since bash reads the script itself from stdin):
+# Usage (flags):
 #   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-compose.sh \
 #     | bash -s -- --domain client.com --gemini-api-key ... --admin-email owner@client.com
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
-# This same file lives in two places, unchanged: here (scripts/, companion
-# files one directory up at this repo's root) and mirrored verbatim to the
-# public maelqo/scripts repo (aiflow/, companion files alongside it under
-# aiflow/config/), synced by .github/workflows/sync-scripts.yml. The
-# mirror exists because AiFlow itself is private, so raw.githubusercontent.com
-# can't serve a client anything from it without per-client auth, see
-# docs/DEPLOYMENTS.md §4. fetch_file() below tries both layouts so this
-# one file works correctly in either home with no per-copy editing.
 REPO_RAW_BASE="${REPO_RAW_BASE:-https://raw.githubusercontent.com/maelqo/scripts}"
 REPO_REF="main"
 DIR="./aiflow"
@@ -48,10 +36,6 @@ Required (flag or env var):
   --domain ROOT              becomes PUBLIC_BASE_URL=https://api.ROOT
                              (or the raw escape hatch: --public-base-url / PUBLIC_BASE_URL)
 
-  Note: this only sets the *backend's* public URL. This script sets up no
-  reverse proxy, so the admin dashboard's hostname isn't handled here at
-  all, point whatever proxy or PaaS you're using at it separately.
-
 Optional:
   --admin-password PASS      AIFLOW_ADMIN_PASSWORD   (auto-generated if omitted)
   --secret-key KEY           SECRET_KEY              (auto-generated if omitted)
@@ -60,7 +44,7 @@ Optional:
   --twilio-api-key-sid ...   TWILIO_API_KEY_SID
   --twilio-api-key-secret ...TWILIO_API_KEY_SECRET
   --ghcr-username USER       GHCR_USERNAME     (AiFlow's own GHCR account, for private
-                                                images; not the client's, see docs/DEPLOYMENTS.md §1.1)
+                                                images; not the client's)
   --ghcr-token TOKEN         GHCR_TOKEN        (the read-only PAT issued for this client)
   --version TAG              AIFLOW_VERSION    (default: 1, tracks all 1.x releases;
                                                 use "latest" or an exact "1.4.2" to opt out of that)

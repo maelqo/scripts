@@ -1,28 +1,20 @@
 #!/usr/bin/env bash
-# Installs self-hosted Coolify (a free,
-# open-source PaaS) and prepares everything needed to finish the deploy in
-# its dashboard. Coolify's first-run root-user creation is browser-only
+# Installs self-hosted Coolify (a free, open-source PaaS) 
+# and prepares everything needed to finish the deploy in its dashboard. 
+# Coolify's first-run root-user creation is browser-only
 # with no scriptable equivalent, so this script installs and hands off
 # with exact next steps rather than faking full end-to-end automation.
 #
-# Usage:
+# Usage (env vars):
 #   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-coolify.sh | sudo bash
 #
-# With optional pre-fill values for the printed copy-paste block (needs
-# "bash -s --" to pass flags through a pipe):
+# Usage (flags):
 #   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-coolify.sh \
 #     | sudo bash -s -- --domain client.com --gemini-api-key ... --admin-email owner@client.com
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
-# This same file lives in two places, unchanged: here (scripts/, companion
-# files one directory up at this repo's root) and mirrored verbatim to the
-# public maelqo/scripts repo (aiflow/, companion files alongside it under
-# aiflow/config/), synced by .github/workflows/sync-scripts.yml. The
-# mirror exists because AiFlow itself is private, so raw.githubusercontent.com
-# can't serve a client anything from it without per-client auth, see
-# docs/DEPLOYMENTS.md §4. fetch_file() below tries both layouts so this
-# one file works correctly in either home with no per-copy editing.
+
 REPO_RAW_BASE="${REPO_RAW_BASE:-https://raw.githubusercontent.com/maelqo/scripts}"
 REPO_REF="main"
 DIR="./aiflow"
@@ -39,9 +31,7 @@ usage() {
 Usage: deploy-coolify.sh [options]
 
 Installs self-hosted Coolify and prints the exact
-manual dashboard steps to finish deploying AiFlow on it. Self-hosted
-Coolify is free forever; Coolify Cloud is a separate paid product this
-script does not use.
+manual dashboard steps to finish deploying AiFlow on it.
 
 Optional:
   --skip-install               Already have Coolify, just print the reference block/steps
@@ -167,9 +157,6 @@ server_ip="$(curl -fsS https://api.ipify.org 2>/dev/null || echo '<server-ip>')"
 
 echo
 log "Coolify install step done. The rest happens in its dashboard (browser-only, cannot be scripted)."
-echo
-echo "Self-hosted Coolify is free forever, no account or subscription required for what follows."
-echo "(Coolify Cloud is a separate paid managed-hosting product, unrelated to this install.)"
 echo
 echo "Next steps:"
 echo "  1. Visit http://${server_ip}:8000 and complete the one-time root user setup."
