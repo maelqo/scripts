@@ -170,6 +170,7 @@ else
   echo "       PUBLIC_BASE_URL=<fill in, the backend's public HTTPS URL>"
 fi
 echo "       (add TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_API_KEY_SID / TWILIO_API_KEY_SECRET if phone features are in scope)"
+echo "       (add RESEND_API_KEY / RESEND_FROM_ADDRESS if email sending is in scope)"
 echo "  4. Under Domains, attach:"
 if [ -n "${API_DOMAIN:-}" ] && [ -n "${ADMIN_DOMAIN:-}" ]; then
   echo "       backend -> $API_DOMAIN"

@@ -2,12 +2,14 @@
 # GitHub Container Registry instead of building from source (that's what
 # the repo's own docker-compose.yml is for). See docs/DEPLOYMENTS.md.
 #
-# Pin the tag to match your change-control comfort level: ":1" tracks all
-# 1.x releases, ":1.4" tracks patch releases within 1.4, an exact ":1.4.2"
-# never moves until you bump it yourself.
+# Pin the tag to match your change-control comfort level via AIFLOW_VERSION
+# in .env (deploy-compose.sh/deploy-caddy.sh write it there, defaulting to
+# the current major version, see the repo-root VERSION file): "2" tracks
+# all 2.x releases, "2.0" tracks patch releases within 2.0, an exact
+# "2.0.0" never moves until you bump it yourself.
 services:
   backend:
-    image: ghcr.io/maelqo/aiflow-backend:1
+    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-2}
     env_file:
       - .env
     environment:
@@ -19,7 +21,7 @@ services:
     restart: unless-stopped
 
   admin:
-    image: ghcr.io/maelqo/aiflow-admin:1
+    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-2}
     environment:
       # Read at container start, not baked into the JS bundle; this is
       # what lets the same published image work for every client without a

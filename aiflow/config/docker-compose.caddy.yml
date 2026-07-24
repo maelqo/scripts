@@ -9,7 +9,7 @@
 # internal Compose network.
 services:
   backend:
-    image: ghcr.io/maelqo/aiflow-backend:1
+    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-2}
     env_file:
       - .env
     environment:
@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   admin:
-    image: ghcr.io/maelqo/aiflow-admin:1
+    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-2}
     environment:
       API_BASE: ${PUBLIC_BASE_URL}
     expose:

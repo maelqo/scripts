@@ -49,11 +49,14 @@ Optional:
   --twilio-auth-token ...      TWILIO_AUTH_TOKEN
   --twilio-api-key-sid ...     TWILIO_API_KEY_SID
   --twilio-api-key-secret ...  TWILIO_API_KEY_SECRET
+  --resend-api-key ...         RESEND_API_KEY    (only needed for the send_email tool /
+                                                  email triggers)
+  --resend-from-address ...    RESEND_FROM_ADDRESS
   --ghcr-username USER         GHCR_USERNAME     (AiFlow's own GHCR account, for private
                                                   images; not the client's)
   --ghcr-token TOKEN           GHCR_TOKEN        (the read-only PAT issued for this client)
-  --version TAG                AIFLOW_VERSION    (default: 1, tracks all 1.x releases;
-                                                  use "latest" or an exact "1.4.2" to opt out of that)
+  --version TAG                AIFLOW_VERSION    (default: 2, tracks all 2.x releases;
+                                                  use "latest" or an exact "2.0.0" to opt out of that)
   --email ADDR                 CADDY_ACME_EMAIL        (Let's Encrypt contact)
   --skip-dns-check             Don't verify DNS resolves to this host first
   --wait-for-dns               Poll (up to ~10 min) until DNS resolves before continuing
@@ -78,9 +81,11 @@ TWILIO_ACCOUNT_SID="${TWILIO_ACCOUNT_SID:-}"
 TWILIO_AUTH_TOKEN="${TWILIO_AUTH_TOKEN:-}"
 TWILIO_API_KEY_SID="${TWILIO_API_KEY_SID:-}"
 TWILIO_API_KEY_SECRET="${TWILIO_API_KEY_SECRET:-}"
+RESEND_API_KEY="${RESEND_API_KEY:-}"
+RESEND_FROM_ADDRESS="${RESEND_FROM_ADDRESS:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
-VERSION="${AIFLOW_VERSION:-1}"
+VERSION="${AIFLOW_VERSION:-2}"
 ACME_EMAIL="${CADDY_ACME_EMAIL:-}"
 
 while [ $# -gt 0 ]; do
@@ -96,6 +101,8 @@ while [ $# -gt 0 ]; do
     --twilio-auth-token) TWILIO_AUTH_TOKEN="$2"; shift 2 ;;
     --twilio-api-key-sid) TWILIO_API_KEY_SID="$2"; shift 2 ;;
     --twilio-api-key-secret) TWILIO_API_KEY_SECRET="$2"; shift 2 ;;
+    --resend-api-key) RESEND_API_KEY="$2"; shift 2 ;;
+    --resend-from-address) RESEND_FROM_ADDRESS="$2"; shift 2 ;;
     --ghcr-username) GHCR_USERNAME="$2"; shift 2 ;;
     --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
@@ -268,14 +275,6 @@ COMPOSE_FILE="docker-compose.caddy.yml"
 fetch_file "docker-compose.caddy.yml" "$COMPOSE_FILE"
 fetch_file "Caddyfile.example" "Caddyfile.example"
 
-if [ "$VERSION" != "1" ]; then
-  sed -i.bak \
-    -e "s#ghcr.io/maelqo/aiflow-backend:1#ghcr.io/maelqo/aiflow-backend:${VERSION}#" \
-    -e "s#ghcr.io/maelqo/aiflow-admin:1#ghcr.io/maelqo/aiflow-admin:${VERSION}#" \
-    "$COMPOSE_FILE"
-  rm -f "$COMPOSE_FILE.bak"
-fi
-
 CADDYFILE="Caddyfile"
 if [ -f "$CADDYFILE" ] && [ "$FORCE" -ne 1 ]; then
   log "$CADDYFILE already exists, leaving it untouched (pass --force to regenerate it)."
@@ -328,12 +327,21 @@ TWILIO_ACCOUNT_SID=$TWILIO_ACCOUNT_SID
 TWILIO_API_KEY_SID=$TWILIO_API_KEY_SID
 TWILIO_API_KEY_SECRET=$TWILIO_API_KEY_SECRET
 TWILIO_AUTH_TOKEN=$TWILIO_AUTH_TOKEN
+RESEND_API_KEY=$RESEND_API_KEY
+RESEND_FROM_ADDRESS=$RESEND_FROM_ADDRESS
 WIDGET_CORS_ORIGINS=["*"]
 MAX_CONCURRENT_OUTBOUND_CALLS=5
 EOF
   log "Wrote $ENV_FILE"
 fi
 [ -n "$SECRET_KEY" ] || die "$ENV_FILE has no SECRET_KEY; pass --force to regenerate."
+
+# Always applied, even against an existing .env left untouched above, so
+# --version takes effect on every run: read by docker-compose.caddy.yml's
+# ${AIFLOW_VERSION:-2} image tag interpolation, not by the application itself.
+grep -v '^AIFLOW_VERSION=' "$ENV_FILE" > "$ENV_FILE.tmp" || true
+printf 'AIFLOW_VERSION=%s\n' "$VERSION" >> "$ENV_FILE.tmp"
+mv "$ENV_FILE.tmp" "$ENV_FILE"
 
 if [ -n "$GHCR_TOKEN" ]; then
   [ -n "$GHCR_USERNAME" ] || die "--ghcr-token given without --ghcr-username."
