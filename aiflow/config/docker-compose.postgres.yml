@@ -1,0 +1,31 @@
+# Optional overlay: swap SQLite (the shipped default) for Postgres, for
+# clients whose own backup/HA tooling is built around it. DATABASE_URL
+# already supports Postgres with zero code changes; this file just wires up
+# a postgres service and points the backend at it. One more opt-in file,
+# not a replacement for the base compose file. Usage:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+#   docker compose -f docker-compose.prod.yml -f docker-compose.postgres.yml up -d
+#   docker compose -f docker-compose.caddy.yml -f docker-compose.postgres.yml up -d
+#
+# Set POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB in .env (the defaults
+# below are fine to try, change them for anything real).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aiflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiflow}
+      POSTGRES_DB: ${POSTGRES_DB:-aiflow}
+    volumes:
+      - aiflow_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aiflow}:${POSTGRES_PASSWORD:-aiflow}@postgres:5432/${POSTGRES_DB:-aiflow}
+    depends_on:
+      - postgres
+
+volumes:
+  aiflow_postgres_data:

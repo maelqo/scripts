@@ -57,6 +57,13 @@ Optional:
   --ghcr-token TOKEN           GHCR_TOKEN        (the read-only PAT issued for this client)
   --version TAG                AIFLOW_VERSION    (default: 2, tracks all 2.x releases;
                                                   use "latest" or an exact "2.0.0" to opt out of that)
+  --outbound-call-max-retries N     OUTBOUND_CALL_MAX_RETRIES      (default: 0, no retry)
+  --sentry-dsn DSN                  SENTRY_DSN                     (default: unset, error tracking off)
+  --widget-session-rate-limit N/period   WIDGET_SESSION_RATE_LIMIT (default: 30/minute)
+  --event-ingestion-rate-limit N/period  EVENT_INGESTION_RATE_LIMIT (default: 120/minute)
+  --call-transcript-retention-days N     CALL_TRANSCRIPT_RETENTION_DAYS (default: unset, keep forever)
+  --event-log-retention-days N           EVENT_LOG_RETENTION_DAYS      (default: unset, keep forever)
+  --outbound-message-retention-days N    OUTBOUND_MESSAGE_RETENTION_DAYS (default: unset, keep forever)
   --email ADDR                 CADDY_ACME_EMAIL        (Let's Encrypt contact)
   --skip-dns-check             Don't verify DNS resolves to this host first
   --wait-for-dns               Poll (up to ~10 min) until DNS resolves before continuing
@@ -87,6 +94,13 @@ GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
 VERSION="${AIFLOW_VERSION:-2}"
 ACME_EMAIL="${CADDY_ACME_EMAIL:-}"
+OUTBOUND_CALL_MAX_RETRIES="${OUTBOUND_CALL_MAX_RETRIES:-0}"
+SENTRY_DSN="${SENTRY_DSN:-}"
+WIDGET_SESSION_RATE_LIMIT="${WIDGET_SESSION_RATE_LIMIT:-30/minute}"
+EVENT_INGESTION_RATE_LIMIT="${EVENT_INGESTION_RATE_LIMIT:-120/minute}"
+CALL_TRANSCRIPT_RETENTION_DAYS="${CALL_TRANSCRIPT_RETENTION_DAYS:-}"
+EVENT_LOG_RETENTION_DAYS="${EVENT_LOG_RETENTION_DAYS:-}"
+OUTBOUND_MESSAGE_RETENTION_DAYS="${OUTBOUND_MESSAGE_RETENTION_DAYS:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -106,6 +120,13 @@ while [ $# -gt 0 ]; do
     --ghcr-username) GHCR_USERNAME="$2"; shift 2 ;;
     --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
+    --outbound-call-max-retries) OUTBOUND_CALL_MAX_RETRIES="$2"; shift 2 ;;
+    --sentry-dsn) SENTRY_DSN="$2"; shift 2 ;;
+    --widget-session-rate-limit) WIDGET_SESSION_RATE_LIMIT="$2"; shift 2 ;;
+    --event-ingestion-rate-limit) EVENT_INGESTION_RATE_LIMIT="$2"; shift 2 ;;
+    --call-transcript-retention-days) CALL_TRANSCRIPT_RETENTION_DAYS="$2"; shift 2 ;;
+    --event-log-retention-days) EVENT_LOG_RETENTION_DAYS="$2"; shift 2 ;;
+    --outbound-message-retention-days) OUTBOUND_MESSAGE_RETENTION_DAYS="$2"; shift 2 ;;
     --email) ACME_EMAIL="$2"; shift 2 ;;
     --skip-dns-check) SKIP_DNS_CHECK=1; shift ;;
     --wait-for-dns) WAIT_FOR_DNS=1; shift ;;
@@ -331,6 +352,13 @@ RESEND_API_KEY=$RESEND_API_KEY
 RESEND_FROM_ADDRESS=$RESEND_FROM_ADDRESS
 WIDGET_CORS_ORIGINS=["*"]
 MAX_CONCURRENT_OUTBOUND_CALLS=5
+OUTBOUND_CALL_MAX_RETRIES=$OUTBOUND_CALL_MAX_RETRIES
+SENTRY_DSN=$SENTRY_DSN
+WIDGET_SESSION_RATE_LIMIT=$WIDGET_SESSION_RATE_LIMIT
+EVENT_INGESTION_RATE_LIMIT=$EVENT_INGESTION_RATE_LIMIT
+CALL_TRANSCRIPT_RETENTION_DAYS=$CALL_TRANSCRIPT_RETENTION_DAYS
+EVENT_LOG_RETENTION_DAYS=$EVENT_LOG_RETENTION_DAYS
+OUTBOUND_MESSAGE_RETENTION_DAYS=$OUTBOUND_MESSAGE_RETENTION_DAYS
 EOF
   log "Wrote $ENV_FILE"
 fi
