@@ -167,7 +167,8 @@ fetch_file() {
     cp "$SCRIPT_DIR/../$rel" "$dest"
   else
     log "Fetching $rel from ref $REPO_REF"
-    curl -fsSL "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest"
+    curl -fsSL --connect-timeout 10 --max-time 60 "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest" \
+      || die "Failed to download $rel from $REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel (timed out or network error). Check this host can reach raw.githubusercontent.com over HTTPS (outbound firewall/proxy), then re-run."
   fi
 }
 
@@ -185,7 +186,7 @@ check_docker() {
   docker_ping_out=""
   if ! docker_ping_out="$(docker info 2>&1 1>/dev/null)"; then
     if printf '%s' "$docker_ping_out" | grep -qiE 'permission denied'; then
-      die "Current user can't access the Docker socket (permission denied on /var/run/docker.sock). This is a local permissions issue, unrelated to GHCR/GitHub credentials: add it to the docker group and start a new session (sudo usermod -aG docker \$USER && newgrp docker), or re-run this script with sudo."
+      die "Current user can't access the Docker socket (permission denied on /var/run/docker.sock). This is a local permissions issue, unrelated to GHCR/GitHub credentials. Fix: sudo usermod -aG docker \$USER && newgrp docker, then re-run without sudo; or run the whole script as root, e.g. curl ... | sudo bash -s -- ... (sudo must wrap bash, not curl: 'sudo curl ... | bash' only elevates curl, bash still runs unprivileged)."
     fi
   fi
 }
@@ -282,7 +283,7 @@ if ! pull_out="$(docker compose -f "$COMPOSE_FILE" pull 2>&1)"; then
   printf '%s\n' "$pull_out" >&2
   if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
     && printf '%s' "$pull_out" | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
-    die "Docker socket permission denied (not a GHCR/registry issue): add the current user to the docker group and start a new session (sudo usermod -aG docker \$USER && newgrp docker), or re-run this script with sudo."
+    die "Docker socket permission denied (not a GHCR/registry issue). Fix: sudo usermod -aG docker \$USER && newgrp docker, then re-run without sudo; or run the whole script as root, e.g. curl ... | sudo bash -s -- ... (sudo must wrap bash, not curl: 'sudo curl ... | bash' only elevates curl, bash still runs unprivileged)."
   fi
   if printf '%s' "$pull_out" | grep -qiE 'unauthorized|denied'; then
     die "GHCR pull was denied. If the images are private, pass --ghcr-username/--ghcr-token."
