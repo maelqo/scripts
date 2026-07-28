@@ -427,7 +427,7 @@ fi
 log "Backend is healthy over HTTPS."
 
 log "Creating admin user $ADMIN_EMAIL..."
-if ! admin_out="$(docker compose -f "$COMPOSE_FILE" exec -T backend python -m scripts.create_admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" 2>&1)"; then
+if ! admin_out="$(docker compose -f "$COMPOSE_FILE" exec -T backend python -m scripts.create_admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" < /dev/null 2>&1)"; then
   printf '%s\n' "$admin_out" >&2
   die "create_admin failed."
 fi
