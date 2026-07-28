@@ -182,6 +182,12 @@ check_docker() {
   fi
   docker compose version >/dev/null 2>&1 \
     || die "docker compose (the v2 plugin) is required; legacy docker-compose is not supported."
+  docker_ping_out=""
+  if ! docker_ping_out="$(docker info 2>&1 1>/dev/null)"; then
+    if printf '%s' "$docker_ping_out" | grep -qiE 'permission denied'; then
+      die "Current user can't access the Docker socket (permission denied on /var/run/docker.sock). This is a local permissions issue, unrelated to GHCR/GitHub credentials: add it to the docker group and start a new session (sudo usermod -aG docker \$USER && newgrp docker), or re-run this script with sudo."
+    fi
+  fi
 }
 
 # Resolve required inputs: flag/env value wins; otherwise prompt on a real
@@ -274,6 +280,10 @@ fi
 log "Pulling images..."
 if ! pull_out="$(docker compose -f "$COMPOSE_FILE" pull 2>&1)"; then
   printf '%s\n' "$pull_out" >&2
+  if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
+    && printf '%s' "$pull_out" | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
+    die "Docker socket permission denied (not a GHCR/registry issue): add the current user to the docker group and start a new session (sudo usermod -aG docker \$USER && newgrp docker), or re-run this script with sudo."
+  fi
   if printf '%s' "$pull_out" | grep -qiE 'unauthorized|denied'; then
     die "GHCR pull was denied. If the images are private, pass --ghcr-username/--ghcr-token."
   fi
