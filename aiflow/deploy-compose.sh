@@ -33,37 +33,45 @@ No reverse proxy/TLS is set up by this script.
 Required (flag or env var):
   --gemini-api-key KEY       GEMINI_API_KEY
   --admin-email EMAIL        AIFLOW_ADMIN_EMAIL
-  --domain ROOT              becomes PUBLIC_BASE_URL=https://api.ROOT
-                             (or the raw escape hatch: --public-base-url / PUBLIC_BASE_URL)
+  --domain ROOT               derives api.ROOT / admin.ROOT
 
 Optional:
-  --admin-password PASS      AIFLOW_ADMIN_PASSWORD   (auto-generated if omitted)
-  --secret-key KEY           SECRET_KEY              (auto-generated if omitted)
-  --twilio-account-sid ...   TWILIO_ACCOUNT_SID
-  --twilio-auth-token ...    TWILIO_AUTH_TOKEN
-  --twilio-api-key-sid ...   TWILIO_API_KEY_SID
-  --twilio-api-key-secret ...TWILIO_API_KEY_SECRET
-  --resend-api-key ...       RESEND_API_KEY    (only needed for the send_email tool /
-                                                email triggers)
-  --resend-from-address ...  RESEND_FROM_ADDRESS
-  --ghcr-username USER       GHCR_USERNAME     (AiFlow's own GHCR account, for private
-                                                images; not the client's)
-  --ghcr-token TOKEN         GHCR_TOKEN        (the read-only PAT issued for this client)
-  --version TAG              AIFLOW_VERSION    (default: 2, tracks all 2.x releases;
-                                                use "latest" or an exact "2.0.0" to opt out of that)
-  --outbound-call-max-retries N     OUTBOUND_CALL_MAX_RETRIES      (default: 0, no retry)
-  --sentry-dsn DSN                  SENTRY_DSN                     (default: unset, error tracking off)
-  --widget-session-rate-limit N/period   WIDGET_SESSION_RATE_LIMIT (default: 30/minute)
-  --event-ingestion-rate-limit N/period  EVENT_INGESTION_RATE_LIMIT (default: 120/minute)
-  --call-transcript-retention-days N     CALL_TRANSCRIPT_RETENTION_DAYS (default: unset, keep forever)
-  --event-log-retention-days N           EVENT_LOG_RETENTION_DAYS      (default: unset, keep forever)
-  --outbound-message-retention-days N    OUTBOUND_MESSAGE_RETENTION_DAYS (default: unset, keep forever)
-  --install-docker           Install Docker via get.docker.com if missing
-  --dir PATH                 Deployment directory (default: ./aiflow)
-  --repo-ref REF             Git ref to fetch companion files from (default: main)
-  --force                    Overwrite an existing .env instead of leaving it alone
-  -y, --yes                  Assume yes on confirmations
-  -h, --help                 Show this help
+  --api-domain ...                        API_DOMAIN
+  --admin-domain ...                      ADMIN_DOMAIN
+  --admin-password PASS                   AIFLOW_ADMIN_PASSWORD   (auto-generated if omitted)
+  --secret-key KEY                        SECRET_KEY              (auto-generated if omitted)
+  --twilio-account-sid ...                TWILIO_ACCOUNT_SID
+  --twilio-auth-token ...                 TWILIO_AUTH_TOKEN
+  --twilio-api-key-sid ...                TWILIO_API_KEY_SID
+  --twilio-api-key-secret ...             TWILIO_API_KEY_SECRET
+  --resend-api-key ...                    RESEND_API_KEY 
+  --resend-from-address ...               RESEND_FROM_ADDRESS
+  --ghcr-username USER                    GHCR_USERNAME     (AiFlow's GHCR account)
+  --ghcr-token TOKEN                      GHCR_TOKEN        (the read-only PAT issued for this client)
+  --version TAG                           AIFLOW_VERSION    (default: 2)
+  --outbound-call-max-retries N           OUTBOUND_CALL_MAX_RETRIES      (default: 0, no retry)
+  --sentry-dsn DSN                        SENTRY_DSN                     (default: unset, error tracking off)
+  --widget-session-rate-limit N/period    WIDGET_SESSION_RATE_LIMIT (default: 30/minute)
+  --event-ingestion-rate-limit N/period   EVENT_INGESTION_RATE_LIMIT (default: 120/minute)
+  --call-transcript-retention-days N      CALL_TRANSCRIPT_RETENTION_DAYS (default: unset, keep forever)
+  --event-log-retention-days N            EVENT_LOG_RETENTION_DAYS      (default: unset, keep forever)
+  --outbound-message-retention-days N     OUTBOUND_MESSAGE_RETENTION_DAYS (default: unset, keep forever)
+  --orchestrators-enabled                 ORCHESTRATORS_ENABLED       (default: false)
+  --anthropic-api-key ...                 ANTHROPIC_API_KEY           (only for an Orchestrator using anthropic/...)
+  --openai-api-key ...                    OPENAI_API_KEY              (only for an Orchestrator using openai/...)
+  --orchestrator-max-steps N              ORCHESTRATOR_MAX_STEPS              (default: 25)
+  --orchestrator-task-timeout-seconds N   ORCHESTRATOR_TASK_TIMEOUT_SECONDS   (default: 60)
+  --postgres                              Use the bundled Postgres container instead of SQLite
+  --postgres-user USER                    POSTGRES_USER      (default: aiflow)
+  --postgres-password PASS                POSTGRES_PASSWORD  (default: aiflow, change it for anything real)
+  --postgres-db NAME                      POSTGRES_DB        (default: aiflow)
+  --database-url URL                      DATABASE_URL       (raw escape hatch: point at a database)
+  --install-docker                        Install Docker via get.docker.com if missing
+  --dir PATH                              Deployment directory (default: ./aiflow)
+  --repo-ref REF                          Git ref to fetch companion files from (default: main)
+  --force                                 Overwrite an existing .env instead of leaving it alone
+  -y, --yes                               Assume yes on confirmations
+  -h, --help                              Show this help
 EOF
 }
 
@@ -71,6 +79,8 @@ GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 ADMIN_EMAIL="${AIFLOW_ADMIN_EMAIL:-}"
 ADMIN_PASSWORD="${AIFLOW_ADMIN_PASSWORD:-}"
 DOMAIN=""
+API_DOMAIN="${AIFLOW_API_DOMAIN:-}"
+ADMIN_DOMAIN="${AIFLOW_ADMIN_DOMAIN:-}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
 SECRET_KEY="${SECRET_KEY:-}"
 TWILIO_ACCOUNT_SID="${TWILIO_ACCOUNT_SID:-}"
@@ -89,6 +99,16 @@ EVENT_INGESTION_RATE_LIMIT="${EVENT_INGESTION_RATE_LIMIT:-120/minute}"
 CALL_TRANSCRIPT_RETENTION_DAYS="${CALL_TRANSCRIPT_RETENTION_DAYS:-}"
 EVENT_LOG_RETENTION_DAYS="${EVENT_LOG_RETENTION_DAYS:-}"
 OUTBOUND_MESSAGE_RETENTION_DAYS="${OUTBOUND_MESSAGE_RETENTION_DAYS:-}"
+ORCHESTRATORS_ENABLED="${ORCHESTRATORS_ENABLED:-false}"
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+ORCHESTRATOR_MAX_STEPS="${ORCHESTRATOR_MAX_STEPS:-25}"
+ORCHESTRATOR_TASK_TIMEOUT_SECONDS="${ORCHESTRATOR_TASK_TIMEOUT_SECONDS:-60}"
+POSTGRES=0
+POSTGRES_USER="${POSTGRES_USER:-}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
+POSTGRES_DB="${POSTGRES_DB:-}"
+DATABASE_URL="${DATABASE_URL:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -96,6 +116,8 @@ while [ $# -gt 0 ]; do
     --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
     --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
     --domain) DOMAIN="$2"; shift 2 ;;
+    --api-domain) API_DOMAIN="$2"; shift 2 ;;
+    --admin-domain) ADMIN_DOMAIN="$2"; shift 2 ;;
     --public-base-url) PUBLIC_BASE_URL="$2"; shift 2 ;;
     --secret-key) SECRET_KEY="$2"; shift 2 ;;
     --twilio-account-sid) TWILIO_ACCOUNT_SID="$2"; shift 2 ;;
@@ -114,6 +136,16 @@ while [ $# -gt 0 ]; do
     --call-transcript-retention-days) CALL_TRANSCRIPT_RETENTION_DAYS="$2"; shift 2 ;;
     --event-log-retention-days) EVENT_LOG_RETENTION_DAYS="$2"; shift 2 ;;
     --outbound-message-retention-days) OUTBOUND_MESSAGE_RETENTION_DAYS="$2"; shift 2 ;;
+    --orchestrators-enabled) ORCHESTRATORS_ENABLED="true"; shift ;;
+    --anthropic-api-key) ANTHROPIC_API_KEY="$2"; shift 2 ;;
+    --openai-api-key) OPENAI_API_KEY="$2"; shift 2 ;;
+    --orchestrator-max-steps) ORCHESTRATOR_MAX_STEPS="$2"; shift 2 ;;
+    --orchestrator-task-timeout-seconds) ORCHESTRATOR_TASK_TIMEOUT_SECONDS="$2"; shift 2 ;;
+    --postgres) POSTGRES=1; shift ;;
+    --postgres-user) POSTGRES_USER="$2"; POSTGRES=1; shift 2 ;;
+    --postgres-password) POSTGRES_PASSWORD="$2"; POSTGRES=1; shift 2 ;;
+    --postgres-db) POSTGRES_DB="$2"; POSTGRES=1; shift 2 ;;
+    --database-url) DATABASE_URL="$2"; shift 2 ;;
     --install-docker) INSTALL_DOCKER=1; shift ;;
     --dir) DIR="$2"; shift 2 ;;
     --repo-ref) REPO_REF="$2"; shift 2 ;;
@@ -201,12 +233,28 @@ check_docker() {
 [ -n "$ADMIN_EMAIL" ] || read -r -p "Admin email: " ADMIN_EMAIL 2>/dev/null </dev/tty || true
 [ -n "$ADMIN_EMAIL" ] || die "Missing --admin-email (or AIFLOW_ADMIN_EMAIL)."
 
-[ -n "$PUBLIC_BASE_URL" ] || [ -z "$DOMAIN" ] || PUBLIC_BASE_URL="https://api.$DOMAIN"
+if [ -z "$API_DOMAIN" ] && [ -n "$DOMAIN" ]; then API_DOMAIN="api.$DOMAIN"; fi
+if [ -z "$ADMIN_DOMAIN" ] && [ -n "$DOMAIN" ]; then ADMIN_DOMAIN="admin.$DOMAIN"; fi
+
+[ -n "$PUBLIC_BASE_URL" ] || [ -z "$API_DOMAIN" ] || PUBLIC_BASE_URL="https://$API_DOMAIN"
 if [ -z "$PUBLIC_BASE_URL" ]; then
   read -r -p "Root domain (e.g. client.com): " DOMAIN 2>/dev/null </dev/tty || true
-  [ -n "$DOMAIN" ] && PUBLIC_BASE_URL="https://api.$DOMAIN"
+  if [ -n "$DOMAIN" ]; then
+    [ -z "$API_DOMAIN" ] && API_DOMAIN="api.$DOMAIN"
+    [ -z "$ADMIN_DOMAIN" ] && ADMIN_DOMAIN="admin.$DOMAIN"
+    PUBLIC_BASE_URL="https://$API_DOMAIN"
+  fi
 fi
-[ -n "$PUBLIC_BASE_URL" ] || die "Missing --domain or --public-base-url (or PUBLIC_BASE_URL)."
+[ -n "$PUBLIC_BASE_URL" ] || die "Missing --domain (or --api-domain/--public-base-url)."
+
+if [ -n "$DATABASE_URL" ] && [ "$POSTGRES" -eq 1 ]; then
+  warn "--database-url was given alongside --postgres/--postgres-*; using --database-url as-is and skipping the bundled Postgres container."
+fi
+if [ "$POSTGRES" -eq 1 ] && [ -z "$DATABASE_URL" ]; then
+  POSTGRES_USER="${POSTGRES_USER:-aiflow}"
+  POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-aiflow}"
+  POSTGRES_DB="${POSTGRES_DB:-aiflow}"
+fi
 
 ADMIN_PASSWORD_GENERATED=0
 if [ -z "$ADMIN_PASSWORD" ]; then
@@ -219,8 +267,22 @@ check_docker
 mkdir -p "$DIR"
 cd "$DIR"
 COMPOSE_FILE="docker-compose.prod.yml"
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
 
 fetch_file "docker-compose.prod.yml" "$COMPOSE_FILE"
+
+if [ "$POSTGRES" -eq 1 ] && [ -z "$DATABASE_URL" ]; then
+  fetch_file "docker-compose.postgres.yml" "docker-compose.postgres.yml"
+  COMPOSE_ARGS+=(-f "docker-compose.postgres.yml")
+fi
+
+if [ -n "$DATABASE_URL" ]; then
+  RESOLVED_DATABASE_URL="$DATABASE_URL"
+elif [ "$POSTGRES" -eq 1 ]; then
+  RESOLVED_DATABASE_URL="postgresql+asyncpg://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB"
+else
+  RESOLVED_DATABASE_URL="sqlite+aiosqlite:///./data/aiflow.db"
+fi
 
 ENV_FILE=".env"
 SECRET_KEY_GENERATED=0
@@ -238,7 +300,10 @@ else
   fi
   cat >"$ENV_FILE" <<EOF
 SECRET_KEY=$SECRET_KEY
-DATABASE_URL=sqlite+aiosqlite:///./data/aiflow.db
+DATABASE_URL=$RESOLVED_DATABASE_URL
+POSTGRES_USER=$POSTGRES_USER
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+POSTGRES_DB=$POSTGRES_DB
 PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 GEMINI_API_KEY=$GEMINI_API_KEY
 GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
@@ -260,6 +325,11 @@ EVENT_INGESTION_RATE_LIMIT=$EVENT_INGESTION_RATE_LIMIT
 CALL_TRANSCRIPT_RETENTION_DAYS=$CALL_TRANSCRIPT_RETENTION_DAYS
 EVENT_LOG_RETENTION_DAYS=$EVENT_LOG_RETENTION_DAYS
 OUTBOUND_MESSAGE_RETENTION_DAYS=$OUTBOUND_MESSAGE_RETENTION_DAYS
+ORCHESTRATORS_ENABLED=$ORCHESTRATORS_ENABLED
+ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+OPENAI_API_KEY=$OPENAI_API_KEY
+ORCHESTRATOR_MAX_STEPS=$ORCHESTRATOR_MAX_STEPS
+ORCHESTRATOR_TASK_TIMEOUT_SECONDS=$ORCHESTRATOR_TASK_TIMEOUT_SECONDS
 EOF
   log "Wrote $ENV_FILE"
 fi
@@ -279,7 +349,7 @@ if [ -n "$GHCR_TOKEN" ]; then
 fi
 
 log "Pulling images..."
-if ! pull_out="$(docker compose -f "$COMPOSE_FILE" pull 2>&1)"; then
+if ! pull_out="$(docker compose "${COMPOSE_ARGS[@]}" pull 2>&1)"; then
   printf '%s\n' "$pull_out" >&2
   if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
     && printf '%s' "$pull_out" | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
@@ -295,7 +365,7 @@ if ! pull_out="$(docker compose -f "$COMPOSE_FILE" pull 2>&1)"; then
 fi
 
 log "Starting containers..."
-if ! up_out="$(docker compose -f "$COMPOSE_FILE" up -d 2>&1)"; then
+if ! up_out="$(docker compose "${COMPOSE_ARGS[@]}" up -d 2>&1)"; then
   printf '%s\n' "$up_out" >&2
   if printf '%s' "$up_out" | grep -qiE 'port is already allocated|address already in use'; then
     die "A required port (8000 or 5173) is already in use on this host."
@@ -314,13 +384,13 @@ for _ in $(seq 1 45); do
 done
 if [ "$healthy" -ne 1 ]; then
   err "Backend did not become healthy in time."
-  docker compose -f "$COMPOSE_FILE" logs --tail=50 backend || true
+  docker compose "${COMPOSE_ARGS[@]}" logs --tail=50 backend || true
   die "Deployment failed health check."
 fi
 log "Backend is healthy."
 
 log "Creating admin user $ADMIN_EMAIL..."
-if ! admin_out="$(docker compose -f "$COMPOSE_FILE" exec -T backend python -m scripts.create_admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" < /dev/null 2>&1)"; then
+if ! admin_out="$(docker compose "${COMPOSE_ARGS[@]}" exec -T backend python -m scripts.create_admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" < /dev/null 2>&1)"; then
   printf '%s\n' "$admin_out" >&2
   die "create_admin failed."
 fi
@@ -332,7 +402,12 @@ echo
 log "Deployment complete."
 echo "  Backend (internal):  http://localhost:8000"
 echo "  Admin (internal):    http://localhost:5173"
-echo "  Public base URL:     $PUBLIC_BASE_URL"
+echo "  Backend public URL:  $PUBLIC_BASE_URL"
+if [ -n "$ADMIN_DOMAIN" ]; then
+  echo "  Admin public URL:    https://$ADMIN_DOMAIN  (point your reverse proxy here too)"
+else
+  echo "  Admin public URL:    <not set, pass --domain or --admin-domain to have this printed>"
+fi
 if [ "$admin_already_existed" -eq 1 ]; then
   echo "  Admin user:           $ADMIN_EMAIL (already existed, password unchanged)"
 elif [ "$ADMIN_PASSWORD_GENERATED" -eq 1 ]; then

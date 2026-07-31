@@ -38,8 +38,12 @@ Optional:
   --force-reinstall            Re-run the installer even if Coolify looks present
   --gemini-api-key KEY         GEMINI_API_KEY        (pre-fills the printed block)
   --admin-email EMAIL          AIFLOW_ADMIN_EMAIL    (pre-fills the printed block)
-  --domain ROOT                Derives api.ROOT / admin.ROOT for the printed block
-  --dir PATH                   Where to save a local docker-compose.prod.yml copy (default: ./aiflow)
+  --domain ROOT                derives api.ROOT / admin.ROOT
+  --api-domain ...             API_DOMAIN
+  --admin-domain ...           ADMIN_DOMAIN
+  --ghcr-username USER         GHCR_USERNAME     (AiFlow's GHCR account)
+  --ghcr-token TOKEN           GHCR_TOKEN        (the read-only PAT issued for this client)
+  --dir PATH                   Where to save a local docker-compose.coolify.yml copy (default: ./aiflow)
   --repo-ref REF               Git ref to fetch companion files from (default: main)
   -h, --help                   Show this help
 EOF
@@ -48,6 +52,10 @@ EOF
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 ADMIN_EMAIL="${AIFLOW_ADMIN_EMAIL:-}"
 DOMAIN=""
+API_DOMAIN="${AIFLOW_API_DOMAIN:-}"
+ADMIN_DOMAIN="${AIFLOW_ADMIN_DOMAIN:-}"
+GHCR_USERNAME="${GHCR_USERNAME:-}"
+GHCR_TOKEN="${GHCR_TOKEN:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -56,6 +64,10 @@ while [ $# -gt 0 ]; do
     --gemini-api-key) GEMINI_API_KEY="$2"; shift 2 ;;
     --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
     --domain) DOMAIN="$2"; shift 2 ;;
+    --api-domain) API_DOMAIN="$2"; shift 2 ;;
+    --admin-domain) ADMIN_DOMAIN="$2"; shift 2 ;;
+    --ghcr-username) GHCR_USERNAME="$2"; shift 2 ;;
+    --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
     --dir) DIR="$2"; shift 2 ;;
     --repo-ref) REPO_REF="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -147,11 +159,19 @@ if [ "$up" -ne 1 ]; then
 fi
 
 mkdir -p "$DIR"
-fetch_file "docker-compose.prod.yml" "$DIR/docker-compose.prod.yml" || warn "Could not fetch docker-compose.prod.yml, paste it from this repo manually."
+fetch_file "docker-compose.coolify.yml" "$DIR/docker-compose.coolify.yml" || warn "Could not fetch docker-compose.coolify.yml, paste it from this repo manually."
+
+if [ -n "$GHCR_TOKEN" ]; then
+  [ -n "$GHCR_USERNAME" ] || die "--ghcr-token given without --ghcr-username."
+  log "Logging in to ghcr.io as $GHCR_USERNAME (on this host, so Coolify's own deployments can reuse it)..."
+  printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+  log "Coolify mounts this host's docker credential store into its deployment containers, so no separate registry step is needed in its UI for this image."
+fi
 
 SECRET_KEY="$(gen_secret)"
 SUGGESTED_PASSWORD="$(gen_password)"
-[ -n "$DOMAIN" ] && API_DOMAIN="api.$DOMAIN" && ADMIN_DOMAIN="admin.$DOMAIN"
+if [ -z "$API_DOMAIN" ] && [ -n "$DOMAIN" ]; then API_DOMAIN="api.$DOMAIN"; fi
+if [ -z "$ADMIN_DOMAIN" ] && [ -n "$DOMAIN" ]; then ADMIN_DOMAIN="admin.$DOMAIN"; fi
 
 server_ip="$(curl -fsS https://api.ipify.org 2>/dev/null || echo '<server-ip>')"
 
@@ -160,7 +180,10 @@ log "Coolify install step done. The rest happens in its dashboard (browser-only,
 echo
 echo "Next steps:"
 echo "  1. Visit http://${server_ip}:8000 and complete the one-time root user setup."
-echo "  2. New Resource -> Docker Compose -> paste the contents of $DIR/docker-compose.prod.yml"
+echo "  2. New Resource -> Docker Compose -> paste the contents of $DIR/docker-compose.coolify.yml"
+echo "     (this variant has no host port bindings, on purpose, see the comment at its top:"
+echo "     a compose resource that binds host ports fights Coolify's own reverse proxy and,"
+echo "     on this host, would collide with Coolify's own dashboard on :8000.)"
 echo "  3. Set these environment variables in Coolify's UI (not as a local .env file):"
 echo "       GEMINI_API_KEY=${GEMINI_API_KEY:-<fill in>}"
 echo "       SECRET_KEY=$SECRET_KEY"
@@ -171,13 +194,20 @@ else
 fi
 echo "       (add TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_API_KEY_SID / TWILIO_API_KEY_SECRET if phone features are in scope)"
 echo "       (add RESEND_API_KEY / RESEND_FROM_ADDRESS if email sending is in scope)"
-echo "  4. Under Domains, attach:"
+echo "       (add ORCHESTRATORS_ENABLED=true + ANTHROPIC_API_KEY / OPENAI_API_KEY if multi-agent"
+echo "        Orchestrators are in scope, off by default)"
+echo "       (DATABASE_URL defaults to SQLite; to use Postgres instead, either point it at a"
+echo "        Postgres instance you already run, or paste docker-compose.postgres.yml's own"
+echo "        'postgres:' service block into this same Compose resource and set"
+echo "        DATABASE_URL=postgresql+asyncpg://\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres:5432/\$POSTGRES_DB"
+echo "        plus POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB, to opt into the bundled container)"
+echo "  4. Under each service's Domains/Ports tab, attach:"
 if [ -n "${API_DOMAIN:-}" ] && [ -n "${ADMIN_DOMAIN:-}" ]; then
-  echo "       backend -> $API_DOMAIN"
-  echo "       admin   -> $ADMIN_DOMAIN"
+  echo "       backend -> $API_DOMAIN  (routes to the container's internal port 8000)"
+  echo "       admin   -> $ADMIN_DOMAIN  (routes to the container's internal port 80)"
 else
-  echo "       backend -> your api subdomain (e.g. api.client-domain.com)"
-  echo "       admin   -> your admin subdomain (e.g. admin.client-domain.com)"
+  echo "       backend -> your api subdomain (e.g. api.client-domain.com), internal port 8000"
+  echo "       admin   -> your admin subdomain (e.g. admin.client-domain.com), internal port 80"
 fi
 echo "     Coolify provisions and renews Let's Encrypt certificates automatically, no separate proxy step."
 echo "  5. Deploy."
@@ -185,6 +215,3 @@ echo "  6. Create the first admin user via the backend service's 'Execute Comman
 echo "       python -m scripts.create_admin ${ADMIN_EMAIL:-owner@client-domain.com} '$SUGGESTED_PASSWORD'"
 echo "     (that suggested password is just a random default, not written anywhere; use your own if you prefer)"
 echo
-if [ "$already_installed" -eq 1 ] && [ "$SKIP_INSTALL" -ne 1 ] && [ "$FORCE_REINSTALL" -ne 1 ]; then
-  warn "Note: if AiFlow's own backend is also deployed on this same box via deploy-compose.sh, it defaults to port 8000 too, same as Coolify's dashboard. Move one of them off :8000 if you colocate them."
-fi
