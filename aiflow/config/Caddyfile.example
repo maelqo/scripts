@@ -8,5 +8,5 @@ api.client-domain.com {
 }
 
 admin.client-domain.com {
-    reverse_proxy admin:80
+    reverse_proxy admin:8080
 }

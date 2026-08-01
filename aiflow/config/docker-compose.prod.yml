@@ -34,12 +34,12 @@ services:
       # rebuild. See admin/docker-entrypoint.sh.
       API_BASE: ${PUBLIC_BASE_URL}
     ports:
-      - "5173:80"
+      - "5173:8080"
     depends_on:
       - backend
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:80/"]
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 5s
       start_period: 10s

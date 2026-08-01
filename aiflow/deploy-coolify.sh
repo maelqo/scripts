@@ -204,10 +204,10 @@ echo "        plus POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB, to opt into 
 echo "  4. Under each service's Domains/Ports tab, attach:"
 if [ -n "${API_DOMAIN:-}" ] && [ -n "${ADMIN_DOMAIN:-}" ]; then
   echo "       backend -> $API_DOMAIN  (routes to the container's internal port 8000)"
-  echo "       admin   -> $ADMIN_DOMAIN  (routes to the container's internal port 80)"
+  echo "       admin   -> $ADMIN_DOMAIN  (routes to the container's internal port 8080)"
 else
   echo "       backend -> your api subdomain (e.g. api.client-domain.com), internal port 8000"
-  echo "       admin   -> your admin subdomain (e.g. admin.client-domain.com), internal port 80"
+  echo "       admin   -> your admin subdomain (e.g. admin.client-domain.com), internal port 8080"
 fi
 echo "     Coolify provisions and renews Let's Encrypt certificates automatically, no separate proxy step."
 echo "  5. Deploy."
