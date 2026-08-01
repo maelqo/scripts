@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # A fresh VPS, Docker Compose, and Caddy
-# in front issuing/renewing Let's Encrypt certificates automatically. 
+# in front issuing/renewing Let's Encrypt certificates automatically.
 #
-# Usage (env vars):
-#   GEMINI_API_KEY=... AIFLOW_ADMIN_EMAIL=owner@client.com \
-#     curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-caddy.sh | bash
-#
-# Usage (flags):
+# Usage:
 #   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-caddy.sh \
-#     | bash -s -- --domain client.com --gemini-api-key ... --admin-email owner@client.com
+#     | bash -s -- --domain client.com --admin-email owner@client.com
+#
+# If ./aiflow/.env doesn't exist yet, this prompts you to paste one in (see
+# .env.example for the full variable list; SECRET_KEY/GEMINI_API_KEY are the
+# only ones that must be real values, PUBLIC_BASE_URL/ADMIN_CORS_ORIGINS are
+# filled in automatically from --domain, everything else is optional). For
+# non-interactive use, write ./aiflow/.env yourself before running, the
+# prompt is skipped whenever a .env is already there.
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
@@ -35,125 +38,61 @@ Usage: deploy-caddy.sh [options]
 Deploys AiFlow behind Caddy on a fresh VPS, with automatic Let's Encrypt TLS.
 One root domain, two subdomains.
 
-Required (flag or env var):
-  --gemini-api-key KEY        GEMINI_API_KEY
-  --admin-email EMAIL         AIFLOW_ADMIN_EMAIL
-  --domain ROOT               derives api.ROOT / admin.ROOT
+All application configuration (GEMINI_API_KEY, SECRET_KEY, Twilio/Resend/
+CRM/SSO/Orchestrator/etc. credentials, rate limits, retention windows, ...)
+lives in .env, not in flags, see .env.example for the full list. If
+./aiflow/.env doesn't already exist, this script prompts you to paste one
+in (Ctrl+D to finish); write it yourself beforehand for non-interactive use.
 
-Optional:
-  --api-domain ...                        API_DOMAIN
-  --admin-domain ...                      ADMIN_DOMAIN
-  --admin-password PASS                   AIFLOW_ADMIN_PASSWORD   (auto-generated if omitted)
-  --secret-key KEY                        SECRET_KEY              (auto-generated if omitted)
-  --twilio-account-sid ...                TWILIO_ACCOUNT_SID
-  --twilio-auth-token ...                 TWILIO_AUTH_TOKEN
-  --twilio-api-key-sid ...                TWILIO_API_KEY_SID
-  --twilio-api-key-secret ...             TWILIO_API_KEY_SECRET
-  --resend-api-key ...                    RESEND_API_KEY 
-  --resend-from-address ...               RESEND_FROM_ADDRESS
-  --ghcr-username USER                    GHCR_USERNAME     (AiFlow's GHCR account)
-  --ghcr-token TOKEN                      GHCR_TOKEN        (the read-only PAT issued for this client)
-  --version TAG                           AIFLOW_VERSION    (default: 2)
-  --outbound-call-max-retries N           OUTBOUND_CALL_MAX_RETRIES      (default: 0, no retry)
-  --sentry-dsn DSN                        SENTRY_DSN                     (default: unset, error tracking off)
-  --widget-session-rate-limit N/period    WIDGET_SESSION_RATE_LIMIT (default: 30/minute)
-  --event-ingestion-rate-limit N/period   EVENT_INGESTION_RATE_LIMIT (default: 120/minute)
-  --call-transcript-retention-days N      CALL_TRANSCRIPT_RETENTION_DAYS (default: unset, keep forever)
-  --event-log-retention-days N            EVENT_LOG_RETENTION_DAYS      (default: unset, keep forever)
-  --outbound-message-retention-days N     OUTBOUND_MESSAGE_RETENTION_DAYS (default: unset, keep forever)
-  --orchestrators-enabled                 ORCHESTRATORS_ENABLED       (default: false)
-  --anthropic-api-key ...                 ANTHROPIC_API_KEY           (only for an Orchestrator using anthropic/...)
-  --openai-api-key ...                    OPENAI_API_KEY              (only for an Orchestrator using openai/...)
-  --orchestrator-max-steps N              ORCHESTRATOR_MAX_STEPS              (default: 25)
-  --orchestrator-task-timeout-seconds N   ORCHESTRATOR_TASK_TIMEOUT_SECONDS   (default: 60)
-  --postgres                              Use the bundled Postgres container instead of SQLite
-  --postgres-user USER                    POSTGRES_USER      (default: aiflow)
-  --postgres-password PASS                POSTGRES_PASSWORD  (default: aiflow, change it for anything real)
-  --postgres-db NAME                      POSTGRES_DB        (default: aiflow)
-  --database-url URL                      DATABASE_URL       (raw escape hatch: point at a database)
-  --email ADDR                            CADDY_ACME_EMAIL        (Let's Encrypt contact)
-  --skip-dns-check                        Don't verify DNS resolves to this host first
-  --wait-for-dns                          Poll (up to ~10 min) until DNS resolves before continuing
-  --staging-tls                           Use Let's Encrypt's staging CA (for repeat testing)
-  --install-docker                        Install Docker via get.docker.com if missing
-  --dir PATH                              Deployment directory (default: ./aiflow)
-  --repo-ref REF                          Git ref to fetch companion files from (default: main)
-  --force                                 Overwrite existing .env/Caddyfile instead of leaving them alone
-  -y, --yes                               Assume yes on confirmations
-  -h, --help                              Show this help
+Options (these control how the script runs and how Caddy/DNS/TLS behave,
+not the deployed app's own configuration):
+  --domain ROOT                            derives api.ROOT / admin.ROOT
+  --api-domain ...                         AIFLOW_API_DOMAIN   (instead of --domain)
+  --admin-domain ...                       AIFLOW_ADMIN_DOMAIN (instead of --domain)
+  --admin-email EMAIL                      AIFLOW_ADMIN_EMAIL      (required; the first admin user's login)
+  --admin-password PASS                    AIFLOW_ADMIN_PASSWORD   (auto-generated if omitted)
+  --ghcr-username USER                     GHCR_USERNAME     (AiFlow's GHCR account)
+  --ghcr-token TOKEN                       GHCR_TOKEN        (the read-only PAT issued for this client)
+  --version TAG                            AIFLOW_VERSION    (default: 2)
+  --postgres                               Also bring up the bundled Postgres container (docker-compose.postgres.yml);
+                                             set POSTGRES_USER/PASSWORD/DB in .env to override its defaults,
+                                             or set DATABASE_URL yourself in .env to point at a Postgres/other
+                                             database you already run instead (leave this flag off in that case)
+  --email ADDR                             CADDY_ACME_EMAIL        (Let's Encrypt contact)
+  --skip-dns-check                         Don't verify DNS resolves to this host first
+  --wait-for-dns                           Poll (up to ~10 min) until DNS resolves before continuing
+  --staging-tls                            Use Let's Encrypt's staging CA (for repeat testing)
+  --install-docker                         Install Docker via get.docker.com if missing
+  --dir PATH                               Deployment directory (default: ./aiflow)
+  --repo-ref REF                           Git ref to fetch companion files from (default: main)
+  --force                                  Overwrite existing .env/Caddyfile instead of leaving them alone
+  -y, --yes                                Assume yes on confirmations
+  -h, --help                               Show this help
 EOF
 }
 
-GEMINI_API_KEY="${GEMINI_API_KEY:-}"
-ADMIN_EMAIL="${AIFLOW_ADMIN_EMAIL:-}"
-ADMIN_PASSWORD="${AIFLOW_ADMIN_PASSWORD:-}"
 DOMAIN=""
 API_DOMAIN="${AIFLOW_API_DOMAIN:-}"
 ADMIN_DOMAIN="${AIFLOW_ADMIN_DOMAIN:-}"
-SECRET_KEY="${SECRET_KEY:-}"
-TWILIO_ACCOUNT_SID="${TWILIO_ACCOUNT_SID:-}"
-TWILIO_AUTH_TOKEN="${TWILIO_AUTH_TOKEN:-}"
-TWILIO_API_KEY_SID="${TWILIO_API_KEY_SID:-}"
-TWILIO_API_KEY_SECRET="${TWILIO_API_KEY_SECRET:-}"
-RESEND_API_KEY="${RESEND_API_KEY:-}"
-RESEND_FROM_ADDRESS="${RESEND_FROM_ADDRESS:-}"
+ADMIN_EMAIL="${AIFLOW_ADMIN_EMAIL:-}"
+ADMIN_PASSWORD="${AIFLOW_ADMIN_PASSWORD:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
 VERSION="${AIFLOW_VERSION:-2}"
 ACME_EMAIL="${CADDY_ACME_EMAIL:-}"
-OUTBOUND_CALL_MAX_RETRIES="${OUTBOUND_CALL_MAX_RETRIES:-0}"
-SENTRY_DSN="${SENTRY_DSN:-}"
-WIDGET_SESSION_RATE_LIMIT="${WIDGET_SESSION_RATE_LIMIT:-30/minute}"
-EVENT_INGESTION_RATE_LIMIT="${EVENT_INGESTION_RATE_LIMIT:-120/minute}"
-CALL_TRANSCRIPT_RETENTION_DAYS="${CALL_TRANSCRIPT_RETENTION_DAYS:-}"
-EVENT_LOG_RETENTION_DAYS="${EVENT_LOG_RETENTION_DAYS:-}"
-OUTBOUND_MESSAGE_RETENTION_DAYS="${OUTBOUND_MESSAGE_RETENTION_DAYS:-}"
-ORCHESTRATORS_ENABLED="${ORCHESTRATORS_ENABLED:-false}"
-ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
-OPENAI_API_KEY="${OPENAI_API_KEY:-}"
-ORCHESTRATOR_MAX_STEPS="${ORCHESTRATOR_MAX_STEPS:-25}"
-ORCHESTRATOR_TASK_TIMEOUT_SECONDS="${ORCHESTRATOR_TASK_TIMEOUT_SECONDS:-60}"
 POSTGRES=0
-POSTGRES_USER="${POSTGRES_USER:-}"
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
-POSTGRES_DB="${POSTGRES_DB:-}"
-DATABASE_URL="${DATABASE_URL:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --gemini-api-key) GEMINI_API_KEY="$2"; shift 2 ;;
-    --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
-    --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
     --domain) DOMAIN="$2"; shift 2 ;;
     --api-domain) API_DOMAIN="$2"; shift 2 ;;
     --admin-domain) ADMIN_DOMAIN="$2"; shift 2 ;;
-    --secret-key) SECRET_KEY="$2"; shift 2 ;;
-    --twilio-account-sid) TWILIO_ACCOUNT_SID="$2"; shift 2 ;;
-    --twilio-auth-token) TWILIO_AUTH_TOKEN="$2"; shift 2 ;;
-    --twilio-api-key-sid) TWILIO_API_KEY_SID="$2"; shift 2 ;;
-    --twilio-api-key-secret) TWILIO_API_KEY_SECRET="$2"; shift 2 ;;
-    --resend-api-key) RESEND_API_KEY="$2"; shift 2 ;;
-    --resend-from-address) RESEND_FROM_ADDRESS="$2"; shift 2 ;;
+    --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
+    --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
     --ghcr-username) GHCR_USERNAME="$2"; shift 2 ;;
     --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
-    --outbound-call-max-retries) OUTBOUND_CALL_MAX_RETRIES="$2"; shift 2 ;;
-    --sentry-dsn) SENTRY_DSN="$2"; shift 2 ;;
-    --widget-session-rate-limit) WIDGET_SESSION_RATE_LIMIT="$2"; shift 2 ;;
-    --event-ingestion-rate-limit) EVENT_INGESTION_RATE_LIMIT="$2"; shift 2 ;;
-    --call-transcript-retention-days) CALL_TRANSCRIPT_RETENTION_DAYS="$2"; shift 2 ;;
-    --event-log-retention-days) EVENT_LOG_RETENTION_DAYS="$2"; shift 2 ;;
-    --outbound-message-retention-days) OUTBOUND_MESSAGE_RETENTION_DAYS="$2"; shift 2 ;;
-    --orchestrators-enabled) ORCHESTRATORS_ENABLED="true"; shift ;;
-    --anthropic-api-key) ANTHROPIC_API_KEY="$2"; shift 2 ;;
-    --openai-api-key) OPENAI_API_KEY="$2"; shift 2 ;;
-    --orchestrator-max-steps) ORCHESTRATOR_MAX_STEPS="$2"; shift 2 ;;
-    --orchestrator-task-timeout-seconds) ORCHESTRATOR_TASK_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --postgres) POSTGRES=1; shift ;;
-    --postgres-user) POSTGRES_USER="$2"; POSTGRES=1; shift 2 ;;
-    --postgres-password) POSTGRES_PASSWORD="$2"; POSTGRES=1; shift 2 ;;
-    --postgres-db) POSTGRES_DB="$2"; POSTGRES=1; shift 2 ;;
-    --database-url) DATABASE_URL="$2"; shift 2 ;;
     --email) ACME_EMAIL="$2"; shift 2 ;;
     --skip-dns-check) SKIP_DNS_CHECK=1; shift ;;
     --wait-for-dns) WAIT_FOR_DNS=1; shift ;;
@@ -192,6 +131,22 @@ confirm() {
   # the script under set -e, just fall through to the safe "no" default.
   read -r -p "$1 [y/N] " reply 2>/dev/null </dev/tty || true
   case "$reply" in [yY]|[yY][eE][sS]) return 0 ;; *) return 1 ;; esac
+}
+
+# Reads the current value of KEY=... from an env file, empty string if
+# absent. Used both to validate what a pasted/pre-staged .env contains and
+# to decide whether inject_env_var below needs to act.
+env_value() {
+  grep -m1 "^${1}=" "$2" 2>/dev/null | cut -d= -f2- || true
+}
+
+# Unconditionally sets KEY=VALUE in FILE, replacing any existing line for
+# that key. Callers decide when this is appropriate to call.
+inject_env_var() {
+  local key="$1" value="$2" file="$3"
+  grep -v "^${key}=" "$file" >"$file.tmp" 2>/dev/null || true
+  printf '%s=%s\n' "$key" "$value" >>"$file.tmp"
+  mv "$file.tmp" "$file"
 }
 
 # Resolved once, before any `cd`, since BASH_SOURCE is a path relative to
@@ -260,9 +215,6 @@ check_dns() {
 # tty (works even under curl | bash if one is attached). A failed /dev/tty
 # open (no controlling terminal) is swallowed rather than aborting the
 # script under set -e; the die() below catches anything still unresolved.
-[ -n "$GEMINI_API_KEY" ] || read -r -p "Gemini API key: " GEMINI_API_KEY 2>/dev/null </dev/tty || true
-[ -n "$GEMINI_API_KEY" ] || die "Missing --gemini-api-key (or GEMINI_API_KEY)."
-
 [ -n "$ADMIN_EMAIL" ] || read -r -p "Admin email: " ADMIN_EMAIL 2>/dev/null </dev/tty || true
 [ -n "$ADMIN_EMAIL" ] || die "Missing --admin-email (or AIFLOW_ADMIN_EMAIL)."
 
@@ -279,15 +231,6 @@ fi
   || die "Missing --domain (or --api-domain/--admin-domain)."
 
 PUBLIC_BASE_URL="https://$API_DOMAIN"
-
-if [ -n "$DATABASE_URL" ] && [ "$POSTGRES" -eq 1 ]; then
-  warn "--database-url was given alongside --postgres/--postgres-*; using --database-url as-is and skipping the bundled Postgres container."
-fi
-if [ "$POSTGRES" -eq 1 ] && [ -z "$DATABASE_URL" ]; then
-  POSTGRES_USER="${POSTGRES_USER:-aiflow}"
-  POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-aiflow}"
-  POSTGRES_DB="${POSTGRES_DB:-aiflow}"
-fi
 
 ADMIN_PASSWORD_GENERATED=0
 if [ -z "$ADMIN_PASSWORD" ]; then
@@ -339,18 +282,11 @@ COMPOSE_ARGS=(-f "$COMPOSE_FILE")
 
 fetch_file "docker-compose.caddy.yml" "$COMPOSE_FILE"
 fetch_file "Caddyfile.example" "Caddyfile.example"
+fetch_file ".env.example" ".env.example"
 
-if [ "$POSTGRES" -eq 1 ] && [ -z "$DATABASE_URL" ]; then
+if [ "$POSTGRES" -eq 1 ]; then
   fetch_file "docker-compose.postgres.yml" "docker-compose.postgres.yml"
   COMPOSE_ARGS+=(-f "docker-compose.postgres.yml")
-fi
-
-if [ -n "$DATABASE_URL" ]; then
-  RESOLVED_DATABASE_URL="$DATABASE_URL"
-elif [ "$POSTGRES" -eq 1 ]; then
-  RESOLVED_DATABASE_URL="postgresql+asyncpg://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB"
-else
-  RESOLVED_DATABASE_URL="sqlite+aiosqlite:///./data/aiflow.db"
 fi
 
 CADDYFILE="Caddyfile"
@@ -379,69 +315,71 @@ else
 fi
 
 ENV_FILE=".env"
-SECRET_KEY_GENERATED=0
+ENV_FILE_IS_FRESH=1
 if [ -f "$ENV_FILE" ] && [ "$FORCE" -ne 1 ]; then
-  log "$ENV_FILE already exists, leaving it untouched (pass --force to regenerate it)."
-  SECRET_KEY="$(grep -m1 '^SECRET_KEY=' "$ENV_FILE" | cut -d= -f2- || true)"
+  log "$ENV_FILE already exists, leaving it untouched (pass --force to replace it)."
+  ENV_FILE_IS_FRESH=0
 else
   if [ -f "$ENV_FILE" ]; then
-    confirm "Overwrite existing $ENV_FILE?" || die "Aborted, existing .env left untouched."
+    confirm "Overwrite existing $ENV_FILE?" || die "Aborted, existing $ENV_FILE left untouched."
     cp "$ENV_FILE" "$ENV_FILE.bak.$(date +%s)"
+    log "Replacing $ENV_FILE (backed up first)."
+  else
+    log "No $ENV_FILE yet."
   fi
-  if [ -z "$SECRET_KEY" ]; then
-    SECRET_KEY="$(gen_secret)"
-    SECRET_KEY_GENERATED=1
+  echo "See $DIR/.env.example for the full list of variables (SECRET_KEY and GEMINI_API_KEY"
+  echo "must be set to real values; PUBLIC_BASE_URL/ADMIN_CORS_ORIGINS are filled in below"
+  echo "from --domain if you don't set them yourself; everything else is optional)."
+  echo "Paste your .env contents below, then press Ctrl+D when done:"
+  echo
+  # Written to a temp file first and moved into place only on success: a
+  # bare `cat >"$ENV_FILE" </dev/tty` would truncate $ENV_FILE via its `>`
+  # redirection before the `</dev/tty` open even gets a chance to fail,
+  # zeroing out an existing file on a failed/no-tty attempt.
+  ENV_FILE_TMP="$ENV_FILE.paste.tmp.$$"
+  if ! cat >"$ENV_FILE_TMP" </dev/tty; then
+    rm -f "$ENV_FILE_TMP"
+    die "Could not read from a terminal to paste into. If running non-interactively, write $DIR/$ENV_FILE yourself before running this script."
   fi
-  # Narrows the admin API's CORS policy to the actual admin subdomain
-  # instead of also inheriting the widget's deliberately permissive
-  # wildcard; blank (no --admin-domain/--domain given) falls back to that
-  # wildcard, same as leaving ADMIN_CORS_ORIGINS unset always does.
-  ADMIN_CORS_ORIGINS_VALUE=""
-  [ -n "$ADMIN_DOMAIN" ] && ADMIN_CORS_ORIGINS_VALUE="[\"https://$ADMIN_DOMAIN\"]"
-  cat >"$ENV_FILE" <<EOF
-SECRET_KEY=$SECRET_KEY
-DATABASE_URL=$RESOLVED_DATABASE_URL
-POSTGRES_USER=$POSTGRES_USER
-POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-POSTGRES_DB=$POSTGRES_DB
-PUBLIC_BASE_URL=$PUBLIC_BASE_URL
-GEMINI_API_KEY=$GEMINI_API_KEY
-GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
-GOOGLE_GENAI_USE_ENTERPRISE=false
-GOOGLE_CLOUD_PROJECT=
-GOOGLE_CLOUD_LOCATION=
-TWILIO_ACCOUNT_SID=$TWILIO_ACCOUNT_SID
-TWILIO_API_KEY_SID=$TWILIO_API_KEY_SID
-TWILIO_API_KEY_SECRET=$TWILIO_API_KEY_SECRET
-TWILIO_AUTH_TOKEN=$TWILIO_AUTH_TOKEN
-RESEND_API_KEY=$RESEND_API_KEY
-RESEND_FROM_ADDRESS=$RESEND_FROM_ADDRESS
-WIDGET_CORS_ORIGINS=["*"]
-ADMIN_CORS_ORIGINS=$ADMIN_CORS_ORIGINS_VALUE
-MAX_CONCURRENT_OUTBOUND_CALLS=5
-OUTBOUND_CALL_MAX_RETRIES=$OUTBOUND_CALL_MAX_RETRIES
-SENTRY_DSN=$SENTRY_DSN
-WIDGET_SESSION_RATE_LIMIT=$WIDGET_SESSION_RATE_LIMIT
-EVENT_INGESTION_RATE_LIMIT=$EVENT_INGESTION_RATE_LIMIT
-CALL_TRANSCRIPT_RETENTION_DAYS=$CALL_TRANSCRIPT_RETENTION_DAYS
-EVENT_LOG_RETENTION_DAYS=$EVENT_LOG_RETENTION_DAYS
-OUTBOUND_MESSAGE_RETENTION_DAYS=$OUTBOUND_MESSAGE_RETENTION_DAYS
-ORCHESTRATORS_ENABLED=$ORCHESTRATORS_ENABLED
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
-OPENAI_API_KEY=$OPENAI_API_KEY
-ORCHESTRATOR_MAX_STEPS=$ORCHESTRATOR_MAX_STEPS
-ORCHESTRATOR_TASK_TIMEOUT_SECONDS=$ORCHESTRATOR_TASK_TIMEOUT_SECONDS
-EOF
-  log "Wrote $ENV_FILE"
+  mv "$ENV_FILE_TMP" "$ENV_FILE"
+  echo
+  log "Saved $ENV_FILE."
 fi
-[ -n "$SECRET_KEY" ] || die "$ENV_FILE has no SECRET_KEY; pass --force to regenerate."
+
+GEMINI_API_KEY="$(env_value GEMINI_API_KEY "$ENV_FILE")"
+[ -n "$GEMINI_API_KEY" ] || die "GEMINI_API_KEY is missing/blank in $DIR/$ENV_FILE. Add it and re-run (see .env.example)."
+
+EXISTING_PUBLIC_BASE_URL="$(env_value PUBLIC_BASE_URL "$ENV_FILE")"
+if [ -z "$EXISTING_PUBLIC_BASE_URL" ]; then
+  inject_env_var PUBLIC_BASE_URL "$PUBLIC_BASE_URL" "$ENV_FILE"
+elif [ "$EXISTING_PUBLIC_BASE_URL" != "$PUBLIC_BASE_URL" ]; then
+  warn "$ENV_FILE's PUBLIC_BASE_URL ($EXISTING_PUBLIC_BASE_URL) differs from https://$API_DOMAIN (derived from --domain/--api-domain); leaving your value in place, but Caddy is about to request a certificate for $API_DOMAIN specifically, make sure that's intentional."
+  PUBLIC_BASE_URL="$EXISTING_PUBLIC_BASE_URL"
+fi
+
+# Narrows the admin API's CORS policy to the actual admin subdomain instead
+# of also inheriting the widget's deliberately permissive wildcard; only
+# injected when the pasted .env doesn't already set it.
+if [ -z "$(env_value ADMIN_CORS_ORIGINS "$ENV_FILE")" ]; then
+  inject_env_var ADMIN_CORS_ORIGINS "[\"https://$ADMIN_DOMAIN\"]" "$ENV_FILE"
+fi
+
+SECRET_KEY_GENERATED=0
+SECRET_KEY="$(env_value SECRET_KEY "$ENV_FILE")"
+if [ -z "$SECRET_KEY" ] || [ "$SECRET_KEY" = "change-me-to-a-random-32-byte-string" ]; then
+  if [ "$ENV_FILE_IS_FRESH" -eq 1 ]; then
+    SECRET_KEY="$(gen_secret)"
+    inject_env_var SECRET_KEY "$SECRET_KEY" "$ENV_FILE"
+    SECRET_KEY_GENERATED=1
+  else
+    die "$ENV_FILE has no SECRET_KEY; pass --force to replace it (you'll be prompted to paste a fresh one)."
+  fi
+fi
 
 # Always applied, even against an existing .env left untouched above, so
 # --version takes effect on every run: read by docker-compose.caddy.yml's
 # ${AIFLOW_VERSION:-2} image tag interpolation, not by the application itself.
-grep -v '^AIFLOW_VERSION=' "$ENV_FILE" > "$ENV_FILE.tmp" || true
-printf 'AIFLOW_VERSION=%s\n' "$VERSION" >> "$ENV_FILE.tmp"
-mv "$ENV_FILE.tmp" "$ENV_FILE"
+inject_env_var AIFLOW_VERSION "$VERSION" "$ENV_FILE"
 
 if [ -n "$GHCR_TOKEN" ]; then
   [ -n "$GHCR_USERNAME" ] || die "--ghcr-token given without --ghcr-username."

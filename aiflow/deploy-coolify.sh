@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# Installs self-hosted Coolify (a free, open-source PaaS) 
-# and prepares everything needed to finish the deploy in its dashboard. 
+# Installs self-hosted Coolify (a free, open-source PaaS)
+# and prepares everything needed to finish the deploy in its dashboard.
 # Coolify's first-run root-user creation is browser-only
 # with no scriptable equivalent, so this script installs and hands off
 # with exact next steps rather than faking full end-to-end automation.
 #
-# Usage (env vars):
+# Usage:
 #   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-coolify.sh | sudo bash
 #
-# Usage (flags):
-#   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-coolify.sh \
-#     | sudo bash -s -- --domain client.com --gemini-api-key ... --admin-email owner@client.com
+# If ./aiflow/coolify.env doesn't exist yet, this prompts you to paste one
+# in (see .env.example for the full variable list). Coolify itself never
+# reads this file directly, its own dashboard UI is where these variables
+# actually get set (Coolify has no local .env concept); this script just
+# stages your intended values locally so it can print them back as the
+# exact block to paste into that UI in step 3 below, instead of you
+# retyping every variable by hand.
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
@@ -20,6 +24,7 @@ REPO_REF="main"
 DIR="./aiflow"
 SKIP_INSTALL=0
 FORCE_REINSTALL=0
+FORCE=0
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -33,23 +38,32 @@ Usage: deploy-coolify.sh [options]
 Installs self-hosted Coolify and prints the exact
 manual dashboard steps to finish deploying AiFlow on it.
 
-Optional:
+All application configuration (GEMINI_API_KEY, SECRET_KEY, Twilio/Resend/
+CRM/SSO/Orchestrator/etc. credentials, rate limits, retention windows, ...)
+is staged locally in aiflow/coolify.env, not passed as flags, see
+.env.example for the full list. If that file doesn't already exist, this
+script prompts you to paste one in (Ctrl+D to finish); write it yourself
+beforehand for non-interactive use. This file is only ever read by this
+script (to print step 3 below), Coolify itself never sees it directly.
+
+Options:
   --skip-install               Already have Coolify, just print the reference block/steps
   --force-reinstall            Re-run the installer even if Coolify looks present
-  --gemini-api-key KEY         GEMINI_API_KEY        (pre-fills the printed block)
-  --admin-email EMAIL          AIFLOW_ADMIN_EMAIL    (pre-fills the printed block)
-  --domain ROOT                derives api.ROOT / admin.ROOT
-  --api-domain ...             API_DOMAIN
-  --admin-domain ...           ADMIN_DOMAIN
-  --ghcr-username USER         GHCR_USERNAME     (AiFlow's GHCR account)
-  --ghcr-token TOKEN           GHCR_TOKEN        (the read-only PAT issued for this client)
-  --dir PATH                   Where to save a local docker-compose.coolify.yml copy (default: ./aiflow)
-  --repo-ref REF               Git ref to fetch companion files from (default: main)
-  -h, --help                   Show this help
+  --gemini-api-key KEY          GEMINI_API_KEY        (pre-fills coolify.env if it doesn't set this already)
+  --admin-email EMAIL           AIFLOW_ADMIN_EMAIL    (pre-fills the printed create_admin command)
+  --domain ROOT                 derives api.ROOT / admin.ROOT
+  --api-domain ...               AIFLOW_API_DOMAIN     (instead of --domain; also pre-fills PUBLIC_BASE_URL)
+  --admin-domain ...             AIFLOW_ADMIN_DOMAIN    (instead of --domain)
+  --ghcr-username USER          GHCR_USERNAME     (AiFlow's GHCR account)
+  --ghcr-token TOKEN            GHCR_TOKEN        (the read-only PAT issued for this client)
+  --dir PATH                    Where to save the local docker-compose.coolify.yml/coolify.env copies (default: ./aiflow)
+  --repo-ref REF                 Git ref to fetch companion files from (default: main)
+  --force                       Overwrite an existing coolify.env instead of leaving it alone
+  -h, --help                    Show this help
 EOF
 }
 
-GEMINI_API_KEY="${GEMINI_API_KEY:-}"
+GEMINI_API_KEY_FLAG="${GEMINI_API_KEY:-}"
 ADMIN_EMAIL="${AIFLOW_ADMIN_EMAIL:-}"
 DOMAIN=""
 API_DOMAIN="${AIFLOW_API_DOMAIN:-}"
@@ -61,7 +75,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --skip-install) SKIP_INSTALL=1; shift ;;
     --force-reinstall) FORCE_REINSTALL=1; shift ;;
-    --gemini-api-key) GEMINI_API_KEY="$2"; shift 2 ;;
+    --gemini-api-key) GEMINI_API_KEY_FLAG="$2"; shift 2 ;;
     --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
     --domain) DOMAIN="$2"; shift 2 ;;
     --api-domain) API_DOMAIN="$2"; shift 2 ;;
@@ -70,6 +84,7 @@ while [ $# -gt 0 ]; do
     --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
     --dir) DIR="$2"; shift 2 ;;
     --repo-ref) REPO_REF="$2"; shift 2 ;;
+    --force) FORCE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1 (see --help)" ;;
   esac
@@ -89,6 +104,30 @@ gen_password() {
   else
     od -An -tx1 -N16 /dev/urandom | tr -d ' \n'
   fi
+}
+
+# Reads the current value of KEY=... from an env file, empty string if
+# absent.
+env_value() {
+  grep -m1 "^${1}=" "$2" 2>/dev/null | cut -d= -f2- || true
+}
+
+# Unconditionally sets KEY=VALUE in FILE, replacing any existing line for
+# that key.
+inject_env_var() {
+  local key="$1" value="$2" file="$3"
+  grep -v "^${key}=" "$file" >"$file.tmp" 2>/dev/null || true
+  printf '%s=%s\n' "$key" "$value" >>"$file.tmp"
+  mv "$file.tmp" "$file"
+}
+
+# Only fills KEY in FILE when it isn't already set there, so a value the
+# user already pasted always wins over a --flag convenience default.
+inject_env_var_if_blank() {
+  local key="$1" value="$2" file="$3"
+  [ -n "$value" ] || return 0
+  [ -z "$(env_value "$key" "$file")" ] || return 0
+  inject_env_var "$key" "$value" "$file"
 }
 
 # Resolved once, before any `cd`, since BASH_SOURCE is a path relative to
@@ -160,6 +199,7 @@ fi
 
 mkdir -p "$DIR"
 fetch_file "docker-compose.coolify.yml" "$DIR/docker-compose.coolify.yml" || warn "Could not fetch docker-compose.coolify.yml, paste it from this repo manually."
+fetch_file ".env.example" "$DIR/.env.example" || warn "Could not fetch .env.example, see this repo's copy manually."
 
 if [ -n "$GHCR_TOKEN" ]; then
   [ -n "$GHCR_USERNAME" ] || die "--ghcr-token given without --ghcr-username."
@@ -168,11 +208,47 @@ if [ -n "$GHCR_TOKEN" ]; then
   log "Coolify mounts this host's docker credential store into its deployment containers, so no separate registry step is needed in its UI for this image."
 fi
 
-SECRET_KEY="$(gen_secret)"
-SUGGESTED_PASSWORD="$(gen_password)"
 if [ -z "$API_DOMAIN" ] && [ -n "$DOMAIN" ]; then API_DOMAIN="api.$DOMAIN"; fi
 if [ -z "$ADMIN_DOMAIN" ] && [ -n "$DOMAIN" ]; then ADMIN_DOMAIN="admin.$DOMAIN"; fi
 
+ENV_FILE="$DIR/coolify.env"
+if [ -f "$ENV_FILE" ] && [ "$FORCE" -ne 1 ]; then
+  log "$ENV_FILE already exists, leaving it untouched (pass --force to replace it)."
+else
+  if [ -f "$ENV_FILE" ]; then
+    cp "$ENV_FILE" "$ENV_FILE.bak.$(date +%s)"
+    log "Replacing $ENV_FILE (backed up first)."
+  else
+    log "No $ENV_FILE yet."
+  fi
+  echo "See $DIR/.env.example for the full list of variables. This file is a local staging"
+  echo "copy only, step 3 below prints it back for you to paste into Coolify's own dashboard,"
+  echo "Coolify never reads this file directly."
+  echo "Paste your intended env contents below, then press Ctrl+D when done:"
+  echo
+  # Written to a temp file first and moved into place only on success: a
+  # bare `cat >"$ENV_FILE" </dev/tty` would truncate $ENV_FILE via its `>`
+  # redirection before the `</dev/tty` open even gets a chance to fail,
+  # zeroing out an existing file on a failed/no-tty attempt.
+  ENV_FILE_TMP="$ENV_FILE.paste.tmp.$$"
+  if ! cat >"$ENV_FILE_TMP" </dev/tty; then
+    rm -f "$ENV_FILE_TMP"
+    die "Could not read from a terminal to paste into. If running non-interactively, write $ENV_FILE yourself before running this script."
+  fi
+  mv "$ENV_FILE_TMP" "$ENV_FILE"
+  echo
+  log "Saved $ENV_FILE."
+fi
+
+inject_env_var_if_blank GEMINI_API_KEY "$GEMINI_API_KEY_FLAG" "$ENV_FILE"
+[ -n "$API_DOMAIN" ] && inject_env_var_if_blank PUBLIC_BASE_URL "https://$API_DOMAIN" "$ENV_FILE"
+
+SECRET_KEY="$(env_value SECRET_KEY "$ENV_FILE")"
+if [ -z "$SECRET_KEY" ] || [ "$SECRET_KEY" = "change-me-to-a-random-32-byte-string" ]; then
+  inject_env_var SECRET_KEY "$(gen_secret)" "$ENV_FILE"
+fi
+
+SUGGESTED_PASSWORD="$(gen_password)"
 server_ip="$(curl -fsS https://api.ipify.org 2>/dev/null || echo '<server-ip>')"
 
 echo
@@ -184,23 +260,16 @@ echo "  2. New Resource -> Docker Compose -> paste the contents of $DIR/docker-c
 echo "     (this variant has no host port bindings, on purpose, see the comment at its top:"
 echo "     a compose resource that binds host ports fights Coolify's own reverse proxy and,"
 echo "     on this host, would collide with Coolify's own dashboard on :8000.)"
-echo "  3. Set these environment variables in Coolify's UI (not as a local .env file):"
-echo "       GEMINI_API_KEY=${GEMINI_API_KEY:-<fill in>}"
-echo "       SECRET_KEY=$SECRET_KEY"
-if [ -n "${API_DOMAIN:-}" ]; then
-  echo "       PUBLIC_BASE_URL=https://$API_DOMAIN"
-else
-  echo "       PUBLIC_BASE_URL=<fill in, the backend's public HTTPS URL>"
-fi
-echo "       (add TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_API_KEY_SID / TWILIO_API_KEY_SECRET if phone features are in scope)"
-echo "       (add RESEND_API_KEY / RESEND_FROM_ADDRESS if email sending is in scope)"
-echo "       (add ORCHESTRATORS_ENABLED=true + ANTHROPIC_API_KEY / OPENAI_API_KEY if multi-agent"
-echo "        Orchestrators are in scope, off by default)"
-echo "       (DATABASE_URL defaults to SQLite; to use Postgres instead, either point it at a"
-echo "        Postgres instance you already run, or paste docker-compose.postgres.yml's own"
-echo "        'postgres:' service block into this same Compose resource and set"
-echo "        DATABASE_URL=postgresql+asyncpg://\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres:5432/\$POSTGRES_DB"
-echo "        plus POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB, to opt into the bundled container)"
+echo "  3. Set these environment variables in Coolify's UI (not as a local .env file),"
+echo "     from $ENV_FILE:"
+echo
+grep -v '^[[:space:]]*#' "$ENV_FILE" | grep -v '^[[:space:]]*$' | sed 's/^/       /'
+echo
+echo "     (DATABASE_URL defaults to SQLite if left unset; to use Postgres instead, either point it at a"
+echo "      Postgres instance you already run, or paste docker-compose.postgres.yml's own"
+echo "      'postgres:' service block into this same Compose resource and set"
+echo "      DATABASE_URL=postgresql+asyncpg://\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres:5432/\$POSTGRES_DB"
+echo "      plus POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB, to opt into the bundled container)"
 echo "  4. Under each service's Domains/Ports tab, attach:"
 if [ -n "${API_DOMAIN:-}" ] && [ -n "${ADMIN_DOMAIN:-}" ]; then
   echo "       backend -> $API_DOMAIN  (routes to the container's internal port 8000)"
