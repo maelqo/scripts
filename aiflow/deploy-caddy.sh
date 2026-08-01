@@ -392,6 +392,12 @@ else
     SECRET_KEY="$(gen_secret)"
     SECRET_KEY_GENERATED=1
   fi
+  # Narrows the admin API's CORS policy to the actual admin subdomain
+  # instead of also inheriting the widget's deliberately permissive
+  # wildcard; blank (no --admin-domain/--domain given) falls back to that
+  # wildcard, same as leaving ADMIN_CORS_ORIGINS unset always does.
+  ADMIN_CORS_ORIGINS_VALUE=""
+  [ -n "$ADMIN_DOMAIN" ] && ADMIN_CORS_ORIGINS_VALUE="[\"https://$ADMIN_DOMAIN\"]"
   cat >"$ENV_FILE" <<EOF
 SECRET_KEY=$SECRET_KEY
 DATABASE_URL=$RESOLVED_DATABASE_URL
@@ -411,6 +417,7 @@ TWILIO_AUTH_TOKEN=$TWILIO_AUTH_TOKEN
 RESEND_API_KEY=$RESEND_API_KEY
 RESEND_FROM_ADDRESS=$RESEND_FROM_ADDRESS
 WIDGET_CORS_ORIGINS=["*"]
+ADMIN_CORS_ORIGINS=$ADMIN_CORS_ORIGINS_VALUE
 MAX_CONCURRENT_OUTBOUND_CALLS=5
 OUTBOUND_CALL_MAX_RETRIES=$OUTBOUND_CALL_MAX_RETRIES
 SENTRY_DSN=$SENTRY_DSN

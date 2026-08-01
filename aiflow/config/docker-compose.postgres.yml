@@ -20,6 +20,11 @@ services:
     volumes:
       - aiflow_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aiflow} -d ${POSTGRES_DB:-aiflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     environment:
