@@ -90,6 +90,26 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Users occasionally paste a full URL (https://api.example.com), the exact
+# string this project's own docs use elsewhere for a different purpose,
+# where --domain/--api-domain/--admin-domain expect a bare domain. Left
+# unstripped, PUBLIC_BASE_URL below would end up as a doubled
+# "https://https://...", broken but with no error to signal it,
+# deploy-caddy.sh's own version of this same fix has the fuller writeup.
+normalize_domain() {
+  local original="$1" value="$1"
+  value="${value#http://}"
+  value="${value#https://}"
+  value="${value%%/*}"
+  if [ "$value" != "$original" ] && [ -n "$original" ]; then
+    warn "Using bare domain '$value' (stripped protocol/path from '$original'); --domain/--api-domain/--admin-domain expect a bare domain, not a full URL."
+  fi
+  printf '%s' "$value"
+}
+DOMAIN="$(normalize_domain "$DOMAIN")"
+API_DOMAIN="$(normalize_domain "$API_DOMAIN")"
+ADMIN_DOMAIN="$(normalize_domain "$ADMIN_DOMAIN")"
+
 gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32

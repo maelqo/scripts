@@ -107,6 +107,26 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Users occasionally paste a full URL (https://api.example.com), the exact
+# string this project's own docs use elsewhere for a different purpose,
+# where --domain/--api-domain/--admin-domain expect a bare domain. Strip a
+# protocol prefix and any trailing path before it reaches the Caddyfile sed
+# substitution further down, where an embedded "//" breaks the expression
+# with a cryptic "unknown option to `s'" far from the actual mistake.
+normalize_domain() {
+  local original="$1" value="$1"
+  value="${value#http://}"
+  value="${value#https://}"
+  value="${value%%/*}"
+  if [ "$value" != "$original" ] && [ -n "$original" ]; then
+    warn "Using bare domain '$value' (stripped protocol/path from '$original'); --domain/--api-domain/--admin-domain expect a bare domain, not a full URL."
+  fi
+  printf '%s' "$value"
+}
+DOMAIN="$(normalize_domain "$DOMAIN")"
+API_DOMAIN="$(normalize_domain "$API_DOMAIN")"
+ADMIN_DOMAIN="$(normalize_domain "$ADMIN_DOMAIN")"
+
 gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
@@ -297,9 +317,13 @@ else
     confirm "Overwrite existing $CADDYFILE?" || die "Aborted, existing Caddyfile left untouched."
     cp "$CADDYFILE" "$CADDYFILE.bak.$(date +%s)"
   fi
+  # "|" rather than "/": a domain can't legally contain one (DNS labels are
+  # letters/digits/hyphens only), so this stays safe even if normalize_domain
+  # above ever misses an edge case, unlike "/", which a URL pasted by
+  # mistake very much does contain.
   sed \
-    -e "s/api.client-domain.com/$API_DOMAIN/" \
-    -e "s/admin.client-domain.com/$ADMIN_DOMAIN/" \
+    -e "s|api.client-domain.com|$API_DOMAIN|" \
+    -e "s|admin.client-domain.com|$ADMIN_DOMAIN|" \
     Caddyfile.example >"$CADDYFILE"
   if [ -n "$ACME_EMAIL" ] || [ "$STAGING_TLS" -eq 1 ]; then
     {
