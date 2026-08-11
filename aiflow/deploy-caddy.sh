@@ -51,6 +51,8 @@ not the deployed app's own configuration):
   --admin-domain ...                       AIFLOW_ADMIN_DOMAIN (instead of --domain)
   --admin-email EMAIL                      AIFLOW_ADMIN_EMAIL      (required; the first admin user's login)
   --admin-password PASS                    AIFLOW_ADMIN_PASSWORD   (auto-generated if omitted)
+  --license-tier TIER                      demo|trial|basic|pro|enterprise (default: demo, needs no key)
+  --license-key KEY                        AIFLOW_LICENSE_KEY (required for any tier but demo; from your MeridFlow dashboard)
   --ghcr-username USER                     GHCR_USERNAME     (AiFlow's GHCR account)
   --ghcr-token TOKEN                       GHCR_TOKEN        (the read-only PAT issued for this client)
   --version TAG                            AIFLOW_VERSION    (default: 2)
@@ -66,6 +68,8 @@ not the deployed app's own configuration):
   --dir PATH                               Deployment directory (default: ./aiflow)
   --repo-ref REF                           Git ref to fetch companion files from (default: main)
   --force                                  Overwrite existing .env/Caddyfile instead of leaving them alone
+  --env-help                               Print every .env variable (with defaults/notes) and exit;
+                                             doesn't deploy anything
   -y, --yes                                Assume yes on confirmations
   -h, --help                               Show this help
 EOF
@@ -76,11 +80,14 @@ API_DOMAIN="${AIFLOW_API_DOMAIN:-}"
 ADMIN_DOMAIN="${AIFLOW_ADMIN_DOMAIN:-}"
 ADMIN_EMAIL="${AIFLOW_ADMIN_EMAIL:-}"
 ADMIN_PASSWORD="${AIFLOW_ADMIN_PASSWORD:-}"
+LICENSE_TIER="${AIFLOW_LICENSE_TIER:-demo}"
+LICENSE_KEY="${AIFLOW_LICENSE_KEY:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
 VERSION="${AIFLOW_VERSION:-2}"
 ACME_EMAIL="${CADDY_ACME_EMAIL:-}"
 POSTGRES=0
+ENV_HELP=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -89,6 +96,8 @@ while [ $# -gt 0 ]; do
     --admin-domain) ADMIN_DOMAIN="$2"; shift 2 ;;
     --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
     --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
+    --license-tier) LICENSE_TIER="$2"; shift 2 ;;
+    --license-key) LICENSE_KEY="$2"; shift 2 ;;
     --ghcr-username) GHCR_USERNAME="$2"; shift 2 ;;
     --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
@@ -101,6 +110,7 @@ while [ $# -gt 0 ]; do
     --dir) DIR="$2"; shift 2 ;;
     --repo-ref) REPO_REF="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
+    --env-help) ENV_HELP=1; shift ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1 (see --help)" ;;
@@ -210,6 +220,20 @@ check_docker() {
   fi
 }
 
+# --env-help: print .env.example (the one canonical variable list, kept in
+# sync with backend/aiflow/config.py) and exit, deploying nothing. Handled
+# as early as possible, right after fetch_file exists, so it works with no
+# other flag present.
+if [ "$ENV_HELP" -eq 1 ]; then
+  ENV_EXAMPLE_TMP="$(mktemp)"
+  fetch_file ".env.example" "$ENV_EXAMPLE_TMP"
+  echo "Every variable AiFlow's backend reads, with defaults and notes (from .env.example):"
+  echo
+  cat "$ENV_EXAMPLE_TMP"
+  rm -f "$ENV_EXAMPLE_TMP"
+  exit 0
+fi
+
 resolve_host() {
   local host="$1"
   if command -v dig >/dev/null 2>&1; then
@@ -237,6 +261,55 @@ check_dns() {
 # script under set -e; the die() below catches anything still unresolved.
 [ -n "$ADMIN_EMAIL" ] || read -r -p "Admin email: " ADMIN_EMAIL 2>/dev/null </dev/tty || true
 [ -n "$ADMIN_EMAIL" ] || die "Missing --admin-email (or AIFLOW_ADMIN_EMAIL)."
+
+case "$LICENSE_TIER" in
+  demo|trial|basic|pro|enterprise) : ;;
+  *) die "--license-tier must be one of: demo, trial, basic, pro, enterprise (got '$LICENSE_TIER')." ;;
+esac
+if [ "$LICENSE_TIER" != "demo" ] && [ -z "$LICENSE_KEY" ]; then
+  die "--license-tier $LICENSE_TIER requires --license-key (copy it from your MeridFlow dashboard)."
+fi
+
+# Extracts max_ver from a licence key's own payload, without verifying its
+# signature: this script has no practical way to check an Ed25519 signature
+# in plain bash, that happens for real, cryptographically, inside AiFlow at
+# boot (aiflow.licensing.token.decode_and_verify). This is a best-effort,
+# install-time sanity check that catches an honest --version/licence
+# mismatch immediately with a clear message, instead of only discovering it
+# after the fact because AiFlow silently fell back to demo mode. It is not
+# the security boundary; a forged key would simply fail to verify at boot
+# regardless of what it claims here.
+license_max_version() {
+  local key="$1" payload_b64 payload_std padded json
+  payload_b64="$(printf '%s' "$key" | cut -d. -f3)"
+  [ -n "$payload_b64" ] || return 1
+  payload_std="$(printf '%s' "$payload_b64" | tr '_-' '/+')"
+  case $((${#payload_std} % 4)) in
+    2) padded="${payload_std}==" ;;
+    3) padded="${payload_std}=" ;;
+    *) padded="$payload_std" ;;
+  esac
+  json="$(printf '%s' "$padded" | base64 -d 2>/dev/null)" || return 1
+  printf '%s' "$json" | grep -o '"max_ver":[0-9]*' | grep -o '[0-9]*$'
+}
+
+if [ -n "$LICENSE_KEY" ]; then
+  REQUESTED_MAJOR="$VERSION"
+  case "$VERSION" in
+    *.*) REQUESTED_MAJOR="${VERSION%%.*}" ;;
+  esac
+  if ! printf '%s' "$REQUESTED_MAJOR" | grep -qE '^[0-9]+$'; then
+    REQUESTED_MAJOR=""
+  fi
+  if [ -n "$REQUESTED_MAJOR" ]; then
+    MAX_VER="$(license_max_version "$LICENSE_KEY" || true)"
+    if [ -n "$MAX_VER" ] && [ "$REQUESTED_MAJOR" -gt "$MAX_VER" ]; then
+      die "--version $VERSION (major $REQUESTED_MAJOR) is newer than what this licence activates (up to major $MAX_VER). Either pass an older --version, or upgrade the licence; AiFlow itself would reject this combination at boot and fall back to demo mode, this just catches it before pulling anything."
+    fi
+  else
+    warn "Could not validate --version $VERSION against the licence's max activated major version (not a plain X or X.Y.Z tag, e.g. 'latest'); if it resolves to a newer major than the licence allows, AiFlow falls back to demo mode at boot rather than refusing to start."
+  fi
+fi
 
 if [ -z "$API_DOMAIN" ] && [ -n "$DOMAIN" ]; then API_DOMAIN="api.$DOMAIN"; fi
 if [ -z "$ADMIN_DOMAIN" ] && [ -n "$DOMAIN" ]; then ADMIN_DOMAIN="admin.$DOMAIN"; fi
@@ -404,6 +477,14 @@ fi
 # --version takes effect on every run: read by docker-compose.caddy.yml's
 # ${AIFLOW_VERSION:-2} image tag interpolation, not by the application itself.
 inject_env_var AIFLOW_VERSION "$VERSION" "$ENV_FILE"
+
+# Same treatment for the licence: --license-tier demo (the default) needs
+# no key at all, AiFlow's own AIFLOW_MODE default is already "demo". Any
+# other tier means a real key was required above, so write both.
+if [ -n "$LICENSE_KEY" ]; then
+  inject_env_var AIFLOW_MODE "live" "$ENV_FILE"
+  inject_env_var AIFLOW_LICENSE_KEY "$LICENSE_KEY" "$ENV_FILE"
+fi
 
 if [ -n "$GHCR_TOKEN" ]; then
   [ -n "$GHCR_USERNAME" ] || die "--ghcr-token given without --ghcr-username."

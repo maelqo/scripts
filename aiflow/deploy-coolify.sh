@@ -51,6 +51,8 @@ Options:
   --force-reinstall            Re-run the installer even if Coolify looks present
   --gemini-api-key KEY          GEMINI_API_KEY        (pre-fills coolify.env if it doesn't set this already)
   --admin-email EMAIL           AIFLOW_ADMIN_EMAIL    (pre-fills the printed create_admin command)
+  --license-tier TIER           demo|trial|basic|pro|enterprise (default: demo, needs no key)
+  --license-key KEY             AIFLOW_LICENSE_KEY (required for any tier but demo; pre-fills coolify.env)
   --domain ROOT                 derives api.ROOT / admin.ROOT
   --api-domain ...               AIFLOW_API_DOMAIN     (instead of --domain; also pre-fills PUBLIC_BASE_URL)
   --admin-domain ...             AIFLOW_ADMIN_DOMAIN    (instead of --domain)
@@ -59,17 +61,22 @@ Options:
   --dir PATH                    Where to save the local docker-compose.coolify.yml/coolify.env copies (default: ./aiflow)
   --repo-ref REF                 Git ref to fetch companion files from (default: main)
   --force                       Overwrite an existing coolify.env instead of leaving it alone
+  --env-help                    Print every .env variable (with defaults/notes) and exit;
+                                  doesn't install or deploy anything
   -h, --help                    Show this help
 EOF
 }
 
 GEMINI_API_KEY_FLAG="${GEMINI_API_KEY:-}"
 ADMIN_EMAIL="${AIFLOW_ADMIN_EMAIL:-}"
+LICENSE_TIER="${AIFLOW_LICENSE_TIER:-demo}"
+LICENSE_KEY="${AIFLOW_LICENSE_KEY:-}"
 DOMAIN=""
 API_DOMAIN="${AIFLOW_API_DOMAIN:-}"
 ADMIN_DOMAIN="${AIFLOW_ADMIN_DOMAIN:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
+ENV_HELP=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -77,6 +84,8 @@ while [ $# -gt 0 ]; do
     --force-reinstall) FORCE_REINSTALL=1; shift ;;
     --gemini-api-key) GEMINI_API_KEY_FLAG="$2"; shift 2 ;;
     --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
+    --license-tier) LICENSE_TIER="$2"; shift 2 ;;
+    --license-key) LICENSE_KEY="$2"; shift 2 ;;
     --domain) DOMAIN="$2"; shift 2 ;;
     --api-domain) API_DOMAIN="$2"; shift 2 ;;
     --admin-domain) ADMIN_DOMAIN="$2"; shift 2 ;;
@@ -85,6 +94,7 @@ while [ $# -gt 0 ]; do
     --dir) DIR="$2"; shift 2 ;;
     --repo-ref) REPO_REF="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
+    --env-help) ENV_HELP=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1 (see --help)" ;;
   esac
@@ -109,6 +119,14 @@ normalize_domain() {
 DOMAIN="$(normalize_domain "$DOMAIN")"
 API_DOMAIN="$(normalize_domain "$API_DOMAIN")"
 ADMIN_DOMAIN="$(normalize_domain "$ADMIN_DOMAIN")"
+
+case "$LICENSE_TIER" in
+  demo|trial|basic|pro|enterprise) : ;;
+  *) die "--license-tier must be one of: demo, trial, basic, pro, enterprise (got '$LICENSE_TIER')." ;;
+esac
+if [ "$LICENSE_TIER" != "demo" ] && [ -z "$LICENSE_KEY" ]; then
+  die "--license-tier $LICENSE_TIER requires --license-key (copy it from your MeridFlow dashboard)."
+fi
 
 gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
@@ -167,6 +185,22 @@ fetch_file() {
     curl -fsSL "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest"
   fi
 }
+
+# --env-help: print .env.example (the one canonical variable list, kept in
+# sync with backend/aiflow/config.py) and exit, installing/deploying
+# nothing. Handled before the root/Linux checks below, since this doesn't
+# need either.
+if [ "$ENV_HELP" -eq 1 ]; then
+  ENV_EXAMPLE_TMP="$(mktemp)"
+  fetch_file ".env.example" "$ENV_EXAMPLE_TMP"
+  echo "Every variable AiFlow's backend reads, with defaults and notes (from .env.example)."
+  echo "Coolify has no .env file of its own; these get pasted into its dashboard UI instead,"
+  echo "see step 3 of this script's normal output."
+  echo
+  cat "$ENV_EXAMPLE_TMP"
+  rm -f "$ENV_EXAMPLE_TMP"
+  exit 0
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
   die "This script must run as root (Coolify's own installer requires it). Re-run with sudo."
@@ -262,6 +296,15 @@ fi
 
 inject_env_var_if_blank GEMINI_API_KEY "$GEMINI_API_KEY_FLAG" "$ENV_FILE"
 [ -n "$API_DOMAIN" ] && inject_env_var_if_blank PUBLIC_BASE_URL "https://$API_DOMAIN" "$ENV_FILE"
+
+# --license-tier demo (the default) needs no key at all, AiFlow's own
+# AIFLOW_MODE default is already "demo". Any other tier means a real key
+# was required above, so pre-fill both, same as GEMINI_API_KEY/
+# PUBLIC_BASE_URL: a value already pasted into coolify.env still wins.
+if [ -n "$LICENSE_KEY" ]; then
+  inject_env_var_if_blank AIFLOW_MODE "live" "$ENV_FILE"
+  inject_env_var_if_blank AIFLOW_LICENSE_KEY "$LICENSE_KEY" "$ENV_FILE"
+fi
 
 SECRET_KEY="$(env_value SECRET_KEY "$ENV_FILE")"
 if [ -z "$SECRET_KEY" ] || [ "$SECRET_KEY" = "change-me-to-a-random-32-byte-string" ]; then
