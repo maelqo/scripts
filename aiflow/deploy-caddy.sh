@@ -55,7 +55,7 @@ not the deployed app's own configuration):
   --license-key KEY                        AIFLOW_LICENSE_KEY (required for any tier but demo; from your MeridFlow dashboard)
   --ghcr-username USER                     GHCR_USERNAME     (AiFlow's GHCR account)
   --ghcr-token TOKEN                       GHCR_TOKEN        (the read-only PAT issued for this client)
-  --version TAG                            AIFLOW_VERSION    (default: 2)
+  --version TAG                            AIFLOW_VERSION    (default: 7)
   --postgres                               Also bring up the bundled Postgres container (docker-compose.postgres.yml);
                                              set POSTGRES_USER/PASSWORD/DB in .env to override its defaults,
                                              or set DATABASE_URL yourself in .env to point at a Postgres/other
@@ -84,7 +84,7 @@ LICENSE_TIER="${AIFLOW_LICENSE_TIER:-demo}"
 LICENSE_KEY="${AIFLOW_LICENSE_KEY:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
-VERSION="${AIFLOW_VERSION:-2}"
+VERSION="${AIFLOW_VERSION:-7}"
 ACME_EMAIL="${CADDY_ACME_EMAIL:-}"
 POSTGRES=0
 ENV_HELP=0
@@ -475,7 +475,7 @@ fi
 
 # Always applied, even against an existing .env left untouched above, so
 # --version takes effect on every run: read by docker-compose.caddy.yml's
-# ${AIFLOW_VERSION:-2} image tag interpolation, not by the application itself.
+# ${AIFLOW_VERSION:-7} image tag interpolation, not by the application itself.
 inject_env_var AIFLOW_VERSION "$VERSION" "$ENV_FILE"
 
 # Same treatment for the licence: --license-tier demo (the default) needs

@@ -9,7 +9,7 @@
 # "2.0.0" never moves until you bump it yourself.
 services:
   backend:
-    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-2}
+    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}
     env_file:
       - .env
     environment:
@@ -27,7 +27,7 @@ services:
       retries: 3
 
   admin:
-    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-2}
+    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-7}
     environment:
       # Read at container start, not baked into the JS bundle; this is
       # what lets the same published image work for every client without a
