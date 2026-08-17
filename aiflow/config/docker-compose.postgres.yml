@@ -1,8 +1,7 @@
 # Optional overlay: swap SQLite (the shipped default) for Postgres, for
-# clients whose own backup/HA tooling is built around it. DATABASE_URL
-# already supports Postgres with zero code changes; this file just wires up
-# a postgres service and points the backend at it. One more opt-in file,
-# not a replacement for the base compose file. Usage:
+# clients whose own backup/HA tooling is built around it. This just wires
+# up a postgres service and points the backend at it; combine it with one
+# of the other compose files rather than running it alone. Usage:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
 #   docker compose -f docker-compose.prod.yml -f docker-compose.postgres.yml up -d

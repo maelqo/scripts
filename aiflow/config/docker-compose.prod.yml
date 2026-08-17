@@ -1,12 +1,9 @@
 # Client deployment compose file: pulls versioned, pre-built images from
-# GitHub Container Registry instead of building from source (that's what
-# the repo's own docker-compose.yml is for). See docs/DEPLOYMENTS.md.
+# GitHub Container Registry instead of building from source locally.
 #
 # Pin the tag to match your change-control comfort level via AIFLOW_VERSION
-# in .env (deploy-compose.sh/deploy-caddy.sh write it there, defaulting to
-# the current major version, see the repo-root VERSION file): "2" tracks
-# all 2.x releases, "2.0" tracks patch releases within 2.0, an exact
-# "2.0.0" never moves until you bump it yourself.
+# in .env: "2" tracks all 2.x releases, "2.0" tracks patch releases within
+# 2.0, an exact "2.0.0" never moves until you bump it yourself.
 services:
   backend:
     image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}
@@ -30,8 +27,7 @@ services:
     image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-7}
     environment:
       # Read at container start, not baked into the JS bundle; this is
-      # what lets the same published image work for every client without a
-      # rebuild. See admin/docker-entrypoint.sh.
+      # what lets the same published image work for every client without a rebuild.
       API_BASE: ${PUBLIC_BASE_URL}
     ports:
       - "5173:8080"

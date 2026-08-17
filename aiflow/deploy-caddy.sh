@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
-# A fresh VPS, Docker Compose, and Caddy
-# in front issuing/renewing Let's Encrypt certificates automatically.
+# Sets up a fresh VPS with Docker Compose and Caddy in front, issuing and
+# renewing Let's Encrypt certificates automatically.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-caddy.sh \
+#   curl -fsSL \
+#     https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-caddy.sh \
 #     | bash -s -- --domain client.com --admin-email owner@client.com
 #
-# If ./aiflow/.env doesn't exist yet, this prompts you to paste one in (see
-# .env.example for the full variable list; SECRET_KEY/GEMINI_API_KEY are the
-# only ones that must be real values, PUBLIC_BASE_URL/ADMIN_CORS_ORIGINS are
-# filled in automatically from --domain, everything else is optional). For
-# non-interactive use, write ./aiflow/.env yourself before running, the
-# prompt is skipped whenever a .env is already there.
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
@@ -38,40 +33,38 @@ Usage: deploy-caddy.sh [options]
 Deploys AiFlow behind Caddy on a fresh VPS, with automatic Let's Encrypt TLS.
 One root domain, two subdomains.
 
-All application configuration (GEMINI_API_KEY, SECRET_KEY, Twilio/Resend/
-CRM/SSO/Orchestrator/etc. credentials, rate limits, retention windows, ...)
-lives in .env, not in flags, see .env.example for the full list. If
-./aiflow/.env doesn't already exist, this script prompts you to paste one
-in (Ctrl+D to finish); write it yourself beforehand for non-interactive use.
+All application configuration lives in .env, not in flags. 
+If ./aiflow/.env doesn't already exist, this
+script prompts you to paste one in (Ctrl+D to finish); write it yourself
+beforehand for non-interactive use.
 
-Options (these control how the script runs and how Caddy/DNS/TLS behave,
-not the deployed app's own configuration):
-  --domain ROOT                            derives api.ROOT / admin.ROOT
-  --api-domain ...                         AIFLOW_API_DOMAIN   (instead of --domain)
-  --admin-domain ...                       AIFLOW_ADMIN_DOMAIN (instead of --domain)
-  --admin-email EMAIL                      AIFLOW_ADMIN_EMAIL      (required; the first admin user's login)
-  --admin-password PASS                    AIFLOW_ADMIN_PASSWORD   (auto-generated if omitted)
-  --license-tier TIER                      demo|trial|basic|pro|enterprise (default: demo, needs no key)
-  --license-key KEY                        AIFLOW_LICENSE_KEY (required for any tier but demo; from your MeridFlow dashboard)
-  --ghcr-username USER                     GHCR_USERNAME     (AiFlow's GHCR account)
-  --ghcr-token TOKEN                       GHCR_TOKEN        (the read-only PAT issued for this client)
-  --version TAG                            AIFLOW_VERSION    (default: 7)
-  --postgres                               Also bring up the bundled Postgres container (docker-compose.postgres.yml);
-                                             set POSTGRES_USER/PASSWORD/DB in .env to override its defaults,
-                                             or set DATABASE_URL yourself in .env to point at a Postgres/other
-                                             database you already run instead (leave this flag off in that case)
-  --email ADDR                             CADDY_ACME_EMAIL        (Let's Encrypt contact)
-  --skip-dns-check                         Don't verify DNS resolves to this host first
-  --wait-for-dns                           Poll (up to ~10 min) until DNS resolves before continuing
-  --staging-tls                            Use Let's Encrypt's staging CA (for repeat testing)
-  --install-docker                         Install Docker via get.docker.com if missing
-  --dir PATH                               Deployment directory (default: ./aiflow)
-  --repo-ref REF                           Git ref to fetch companion files from (default: main)
-  --force                                  Overwrite existing .env/Caddyfile instead of leaving them alone
-  --env-help                               Print every .env variable (with defaults/notes) and exit;
-                                             doesn't deploy anything
-  -y, --yes                                Assume yes on confirmations
-  -h, --help                               Show this help
+Options:
+  --domain ROOT           derives api.ROOT / admin.ROOT
+  --api-domain ...        AIFLOW_API_DOMAIN (instead of --domain)
+  --admin-domain ...      AIFLOW_ADMIN_DOMAIN (instead of --domain)
+  --admin-email EMAIL     AIFLOW_ADMIN_EMAIL (required; the first admin user's login)
+  --admin-password PASS   AIFLOW_ADMIN_PASSWORD (auto-generated if omitted)
+  --license-tier TIER     demo|trial|basic|pro|enterprise (default: demo, needs no key)
+  --license-key KEY       AIFLOW_LICENSE_KEY (required for any tier but demo)
+  --ghcr-username USER    GHCR_USERNAME (AiFlow's GHCR account)
+  --ghcr-token TOKEN      GHCR_TOKEN (the read-only PAT issued for this client)
+  --version TAG           AIFLOW_VERSION (default: 7)
+  --postgres              Also bring up the bundled Postgres container; set
+                          POSTGRES_USER/PASSWORD/DB in .env to override its defaults, or
+                          set DATABASE_URL yourself to point at a database you already run
+                          instead (leave this flag off)
+  --email ADDR            CADDY_ACME_EMAIL (Let's Encrypt contact)
+  --skip-dns-check        Don't verify DNS resolves to this host first
+  --wait-for-dns          Poll (up to ~10 min) until DNS resolves before continuing
+  --staging-tls           Use Let's Encrypt's staging CA (for repeat testing)
+  --install-docker        Install Docker via get.docker.com if missing
+  --dir PATH              Deployment directory (default: ./aiflow)
+  --repo-ref REF          Git ref to fetch companion files from (default: main)
+  --force                 Overwrite existing .env and Caddyfile instead of leaving them alone
+  --env-help              Print every .env variable (with defaults and notes) and exit;
+                          doesn't deploy anything
+  -y, --yes               Assume yes on confirmations
+  -h, --help              Show this help
 EOF
 }
 
@@ -117,19 +110,17 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Users occasionally paste a full URL (https://api.example.com), the exact
-# string this project's own docs use elsewhere for a different purpose,
-# where --domain/--api-domain/--admin-domain expect a bare domain. Strip a
-# protocol prefix and any trailing path before it reaches the Caddyfile sed
-# substitution further down, where an embedded "//" breaks the expression
-# with a cryptic "unknown option to `s'" far from the actual mistake.
+# People sometimes paste a full URL where a bare domain is expected. Strip
+# any protocol prefix and trailing path so the Caddyfile substitution below
+# doesn't break on an embedded "/".
 normalize_domain() {
   local original="$1" value="$1"
   value="${value#http://}"
   value="${value#https://}"
   value="${value%%/*}"
   if [ "$value" != "$original" ] && [ -n "$original" ]; then
-    warn "Using bare domain '$value' (stripped protocol/path from '$original'); --domain/--api-domain/--admin-domain expect a bare domain, not a full URL."
+    warn "Using bare domain '$value'  from '$original'; "\
+"--domain/--api-domain/--admin-domain expect a bare domain, not a full URL."
   fi
   printf '%s' "$value"
 }
@@ -156,22 +147,18 @@ gen_password() {
 confirm() {
   [ "$ASSUME_YES" -eq 1 ] && return 0
   local reply=""
-  # A "readable" /dev/tty can still fail to open (no controlling terminal,
-  # e.g. under some sandboxed/non-interactive shells); never let that abort
-  # the script under set -e, just fall through to the safe "no" default.
+  # /dev/tty can fail to open with no controlling terminal attached, which
+  # must never abort the script under set -e; fall through to a "no".
   read -r -p "$1 [y/N] " reply 2>/dev/null </dev/tty || true
   case "$reply" in [yY]|[yY][eE][sS]) return 0 ;; *) return 1 ;; esac
 }
 
-# Reads the current value of KEY=... from an env file, empty string if
-# absent. Used both to validate what a pasted/pre-staged .env contains and
-# to decide whether inject_env_var below needs to act.
+# Reads the current value of KEY=... from an env file, empty string if absent.
 env_value() {
   grep -m1 "^${1}=" "$2" 2>/dev/null | cut -d= -f2- || true
 }
 
-# Unconditionally sets KEY=VALUE in FILE, replacing any existing line for
-# that key. Callers decide when this is appropriate to call.
+# Sets KEY=VALUE in FILE, replacing any existing line for that key.
 inject_env_var() {
   local key="$1" value="$2" file="$3"
   grep -v "^${key}=" "$file" >"$file.tmp" 2>/dev/null || true
@@ -179,8 +166,8 @@ inject_env_var() {
   mv "$file.tmp" "$file"
 }
 
-# Resolved once, before any `cd`, since BASH_SOURCE is a path relative to
-# the invocation directory and stops resolving correctly once we move.
+# Resolved once, before any `cd`, since BASH_SOURCE is relative to the
+# invocation directory and stops resolving correctly once we move.
 SCRIPT_DIR=""
 case "${BASH_SOURCE[0]:-}" in
   */*) SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" ;;
@@ -196,8 +183,11 @@ fetch_file() {
     cp "$SCRIPT_DIR/../$rel" "$dest"
   else
     log "Fetching $rel from ref $REPO_REF"
-    curl -fsSL --connect-timeout 10 --max-time 60 "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest" \
-      || die "Failed to download $rel from $REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel (timed out or network error). Check this host can reach raw.githubusercontent.com over HTTPS (outbound firewall/proxy), then re-run."
+    curl -fsSL --connect-timeout 10 --max-time 60 \
+      "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest" \
+      || die "Failed to download $rel (timed out or network error). "\
+"Check this host can reach raw.githubusercontent.com over HTTPS "\
+"(outbound firewall/proxy), then re-run."
   fi
 }
 
@@ -207,27 +197,29 @@ check_docker() {
       log "Docker not found, installing via get.docker.com..."
       curl -fsSL https://get.docker.com | sh
     else
-      die "Docker is not installed. Install it (curl -fsSL https://get.docker.com | sh) or re-run with --install-docker."
+      die "Docker is not installed. Install it (curl -fsSL https://get.docker.com "\
+"| sh) or re-run with --install-docker."
     fi
   fi
   docker compose version >/dev/null 2>&1 \
-    || die "docker compose (the v2 plugin) is required; legacy docker-compose is not supported."
+    || die "docker compose (the v2 plugin) is required; legacy docker-compose "\
+"is not supported."
   docker_ping_out=""
   if ! docker_ping_out="$(docker info 2>&1 1>/dev/null)"; then
     if printf '%s' "$docker_ping_out" | grep -qiE 'permission denied'; then
-      die "Current user can't access the Docker socket (permission denied on /var/run/docker.sock). This is a local permissions issue, unrelated to GHCR/GitHub credentials. Fix: sudo usermod -aG docker \$USER && newgrp docker, then re-run without sudo; or run the whole script as root, e.g. curl ... | sudo bash -s -- ... (sudo must wrap bash, not curl: 'sudo curl ... | bash' only elevates curl, bash still runs unprivileged)."
+      die "Current user can't access the Docker socket. Fix: "\
+"sudo usermod -aG docker \$USER && newgrp docker, then re-run without "\
+"sudo; or run the whole script as root."
     fi
   fi
 }
 
-# --env-help: print .env.example (the one canonical variable list, kept in
-# sync with backend/aiflow/config.py) and exit, deploying nothing. Handled
-# as early as possible, right after fetch_file exists, so it works with no
-# other flag present.
+# Prints .env.example (the canonical list of variables the backend reads)
+# and exits without deploying anything.
 if [ "$ENV_HELP" -eq 1 ]; then
   ENV_EXAMPLE_TMP="$(mktemp)"
   fetch_file ".env.example" "$ENV_EXAMPLE_TMP"
-  echo "Every variable AiFlow's backend reads, with defaults and notes (from .env.example):"
+  echo "Every variable AiFlow's backend reads, with defaults and notes:"
   echo
   cat "$ENV_EXAMPLE_TMP"
   rm -f "$ENV_EXAMPLE_TMP"
@@ -255,30 +247,30 @@ check_dns() {
   [ "$resolved" = "$expected" ]
 }
 
-# Resolve required inputs: flag/env value wins; otherwise prompt on a real
-# tty (works even under curl | bash if one is attached). A failed /dev/tty
-# open (no controlling terminal) is swallowed rather than aborting the
-# script under set -e; the die() below catches anything still unresolved.
-[ -n "$ADMIN_EMAIL" ] || read -r -p "Admin email: " ADMIN_EMAIL 2>/dev/null </dev/tty || true
+# A flag or env var value wins; otherwise prompt on a real tty (works even
+# under curl | bash if one is attached). A failed /dev/tty open is swallowed
+# rather than aborting under set -e; the die() below catches anything left.
+[ -n "$ADMIN_EMAIL" ] \
+  || read -r -p "Admin email: " ADMIN_EMAIL 2>/dev/null </dev/tty || true
 [ -n "$ADMIN_EMAIL" ] || die "Missing --admin-email (or AIFLOW_ADMIN_EMAIL)."
 
 case "$LICENSE_TIER" in
   demo|trial|basic|pro|enterprise) : ;;
-  *) die "--license-tier must be one of: demo, trial, basic, pro, enterprise (got '$LICENSE_TIER')." ;;
+  *) die "--license-tier must be one of: demo, trial, basic, pro, enterprise "\
+"(got '$LICENSE_TIER')." ;;
 esac
 if [ "$LICENSE_TIER" != "demo" ] && [ -z "$LICENSE_KEY" ]; then
-  die "--license-tier $LICENSE_TIER requires --license-key (copy it from your MeridFlow dashboard)."
+  die "--license-tier $LICENSE_TIER requires --license-key "\
+"(copy it from your MeridFlow dashboard)."
 fi
 
-# Extracts max_ver from a licence key's own payload, without verifying its
-# signature: this script has no practical way to check an Ed25519 signature
-# in plain bash, that happens for real, cryptographically, inside AiFlow at
-# boot (aiflow.licensing.token.decode_and_verify). This is a best-effort,
-# install-time sanity check that catches an honest --version/licence
-# mismatch immediately with a clear message, instead of only discovering it
-# after the fact because AiFlow silently fell back to demo mode. It is not
-# the security boundary; a forged key would simply fail to verify at boot
-# regardless of what it claims here.
+# Reads max_ver out of a licence key's own payload, without verifying its
+# signature (this script has no practical way to check an Ed25519 signature
+# in plain bash; that real check happens at boot instead). This is just a
+# best-effort, install-time sanity check that catches an obvious
+# --version/licence mismatch immediately, with a clear message, rather than
+# only discovering it after the fact. A forged key would still fail to
+# verify at boot regardless of what it claims here.
 license_max_version() {
   local key="$1" payload_b64 payload_std padded json
   payload_b64="$(printf '%s' "$key" | cut -d. -f3)"
@@ -304,10 +296,16 @@ if [ -n "$LICENSE_KEY" ]; then
   if [ -n "$REQUESTED_MAJOR" ]; then
     MAX_VER="$(license_max_version "$LICENSE_KEY" || true)"
     if [ -n "$MAX_VER" ] && [ "$REQUESTED_MAJOR" -gt "$MAX_VER" ]; then
-      die "--version $VERSION (major $REQUESTED_MAJOR) is newer than what this licence activates (up to major $MAX_VER). Either pass an older --version, or upgrade the licence; AiFlow itself would reject this combination at boot and fall back to demo mode, this just catches it before pulling anything."
+      die "--version $VERSION (major $REQUESTED_MAJOR) is newer than what "\
+"this licence activates (up to major $MAX_VER). Either pass an older "\
+"--version, or upgrade the licence; AiFlow would reject this combination "\
+"at boot and fall back to demo mode."
     fi
   else
-    warn "Could not validate --version $VERSION against the licence's max activated major version (not a plain X or X.Y.Z tag, e.g. 'latest'); if it resolves to a newer major than the licence allows, AiFlow falls back to demo mode at boot rather than refusing to start."
+    warn "Could not validate --version $VERSION against the licence's max "\
+"activated major version (not a plain X or X.Y.Z tag, e.g. 'latest'); if "\
+"it resolves to a newer major than the licence allows, AiFlow falls back "\
+"to demo mode at boot rather than refusing to start."
   fi
 fi
 
@@ -351,15 +349,20 @@ if [ "$SKIP_DNS_CHECK" -ne 1 ]; then
     done
     if [ "$ok" -ne 1 ]; then
       warn "$API_DOMAIN / $ADMIN_DOMAIN do not both resolve to this host's IP ($ip) yet."
-      warn "Caddy will fail to issue certificates until DNS propagates. Point their A/AAAA records here, or pass --wait-for-dns / --skip-dns-check."
+      warn "Caddy will fail to issue certificates until DNS propagates. Point "\
+"their A/AAAA records here, or pass --wait-for-dns / --skip-dns-check."
       if [ "$ASSUME_YES" -ne 1 ]; then
-        # Only abort if we get an actual "no" from a real terminal; with no
-        # controlling terminal attached (the common curl | bash case) fall
-        # through and proceed with the warning already printed above.
+        # Only abort on an actual "no" from a real terminal; with no
+        # controlling terminal attached (the common curl | bash case),
+        # fall through and proceed with the warning already printed above.
         dns_reply=""
-        read -r -p "Continue anyway? [y/N] " dns_reply 2>/dev/null </dev/tty || dns_reply="__no-tty__"
+        read -r -p "Continue anyway? [y/N] " dns_reply 2>/dev/null </dev/tty \
+          || dns_reply="__no-tty__"
         if [ "$dns_reply" != "__no-tty__" ]; then
-          case "$dns_reply" in [yY]|[yY][eE][sS]) : ;; *) die "Aborted, fix DNS and re-run." ;; esac
+          case "$dns_reply" in
+            [yY]|[yY][eE][sS]) : ;;
+            *) die "Aborted, fix DNS and re-run." ;;
+          esac
         fi
       fi
     else
@@ -387,13 +390,13 @@ if [ -f "$CADDYFILE" ] && [ "$FORCE" -ne 1 ]; then
   log "$CADDYFILE already exists, leaving it untouched (pass --force to regenerate it)."
 else
   if [ -f "$CADDYFILE" ]; then
-    confirm "Overwrite existing $CADDYFILE?" || die "Aborted, existing Caddyfile left untouched."
+    confirm "Overwrite existing $CADDYFILE?" \
+      || die "Aborted, existing Caddyfile left untouched."
     cp "$CADDYFILE" "$CADDYFILE.bak.$(date +%s)"
   fi
-  # "|" rather than "/": a domain can't legally contain one (DNS labels are
-  # letters/digits/hyphens only), so this stays safe even if normalize_domain
-  # above ever misses an edge case, unlike "/", which a URL pasted by
-  # mistake very much does contain.
+  # A domain can't legally contain "|" (DNS labels are letters, digits, and
+  # hyphens only), so it's a safer sed delimiter than "/" here, which a
+  # pasted URL could still contain even after normalize_domain above.
   sed \
     -e "s|api.client-domain.com|$API_DOMAIN|" \
     -e "s|admin.client-domain.com|$ADMIN_DOMAIN|" \
@@ -402,7 +405,8 @@ else
     {
       echo "{"
       [ -n "$ACME_EMAIL" ] && echo "    email $ACME_EMAIL"
-      [ "$STAGING_TLS" -eq 1 ] && echo "    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory"
+      [ "$STAGING_TLS" -eq 1 ] \
+        && echo "    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory"
       echo "}"
       cat "$CADDYFILE"
     } >"$CADDYFILE.new"
@@ -418,25 +422,25 @@ if [ -f "$ENV_FILE" ] && [ "$FORCE" -ne 1 ]; then
   ENV_FILE_IS_FRESH=0
 else
   if [ -f "$ENV_FILE" ]; then
-    confirm "Overwrite existing $ENV_FILE?" || die "Aborted, existing $ENV_FILE left untouched."
+    confirm "Overwrite existing $ENV_FILE?" \
+      || die "Aborted, existing $ENV_FILE left untouched."
     cp "$ENV_FILE" "$ENV_FILE.bak.$(date +%s)"
     log "Replacing $ENV_FILE (backed up first)."
   else
     log "No $ENV_FILE yet."
   fi
-  echo "See $DIR/.env.example for the full list of variables (SECRET_KEY and GEMINI_API_KEY"
-  echo "must be set to real values; PUBLIC_BASE_URL/ADMIN_CORS_ORIGINS are filled in below"
-  echo "from --domain if you don't set them yourself; everything else is optional)."
+  echo "See $DIR/.env.example for the full list of variables."
   echo "Paste your .env contents below, then press Ctrl+D when done:"
   echo
   # Written to a temp file first and moved into place only on success: a
   # bare `cat >"$ENV_FILE" </dev/tty` would truncate $ENV_FILE via its `>`
   # redirection before the `</dev/tty` open even gets a chance to fail,
-  # zeroing out an existing file on a failed/no-tty attempt.
+  # wiping out an existing file on a failed or no-tty attempt.
   ENV_FILE_TMP="$ENV_FILE.paste.tmp.$$"
   if ! cat >"$ENV_FILE_TMP" </dev/tty; then
     rm -f "$ENV_FILE_TMP"
-    die "Could not read from a terminal to paste into. If running non-interactively, write $DIR/$ENV_FILE yourself before running this script."
+    die "Could not read from a terminal to paste into. If running "\
+"non-interactively, write $DIR/$ENV_FILE yourself before running this script."
   fi
   mv "$ENV_FILE_TMP" "$ENV_FILE"
   echo
@@ -444,13 +448,18 @@ else
 fi
 
 GEMINI_API_KEY="$(env_value GEMINI_API_KEY "$ENV_FILE")"
-[ -n "$GEMINI_API_KEY" ] || die "GEMINI_API_KEY is missing/blank in $DIR/$ENV_FILE. Add it and re-run (see .env.example)."
+[ -n "$GEMINI_API_KEY" ] \
+  || die "GEMINI_API_KEY is missing/blank in $DIR/$ENV_FILE. Add it and "\
+"re-run."
 
 EXISTING_PUBLIC_BASE_URL="$(env_value PUBLIC_BASE_URL "$ENV_FILE")"
 if [ -z "$EXISTING_PUBLIC_BASE_URL" ]; then
   inject_env_var PUBLIC_BASE_URL "$PUBLIC_BASE_URL" "$ENV_FILE"
 elif [ "$EXISTING_PUBLIC_BASE_URL" != "$PUBLIC_BASE_URL" ]; then
-  warn "$ENV_FILE's PUBLIC_BASE_URL ($EXISTING_PUBLIC_BASE_URL) differs from https://$API_DOMAIN (derived from --domain/--api-domain); leaving your value in place, but Caddy is about to request a certificate for $API_DOMAIN specifically, make sure that's intentional."
+  warn "$ENV_FILE's PUBLIC_BASE_URL ($EXISTING_PUBLIC_BASE_URL) differs "\
+"from https://$API_DOMAIN (derived from --domain/--api-domain); leaving "\
+"your value in place, but Caddy is about to request a certificate for "\
+"$API_DOMAIN specifically, make sure that's intentional."
   PUBLIC_BASE_URL="$EXISTING_PUBLIC_BASE_URL"
 fi
 
@@ -463,24 +472,26 @@ fi
 
 SECRET_KEY_GENERATED=0
 SECRET_KEY="$(env_value SECRET_KEY "$ENV_FILE")"
-if [ -z "$SECRET_KEY" ] || [ "$SECRET_KEY" = "change-me-to-a-random-32-byte-string" ]; then
+if [ -z "$SECRET_KEY" ] \
+  || [ "$SECRET_KEY" = "change-me-to-a-random-32-byte-string" ]; then
   if [ "$ENV_FILE_IS_FRESH" -eq 1 ]; then
     SECRET_KEY="$(gen_secret)"
     inject_env_var SECRET_KEY "$SECRET_KEY" "$ENV_FILE"
     SECRET_KEY_GENERATED=1
   else
-    die "$ENV_FILE has no SECRET_KEY; pass --force to replace it (you'll be prompted to paste a fresh one)."
+    die "$ENV_FILE has no SECRET_KEY; pass --force to replace it (you'll be "\
+"prompted to paste a fresh one)."
   fi
 fi
 
-# Always applied, even against an existing .env left untouched above, so
-# --version takes effect on every run: read by docker-compose.caddy.yml's
-# ${AIFLOW_VERSION:-7} image tag interpolation, not by the application itself.
+# Applied even to an existing .env left untouched above, so --version takes
+# effect on every run; this only sets the image tag pulled below, it isn't
+# read by the application itself.
 inject_env_var AIFLOW_VERSION "$VERSION" "$ENV_FILE"
 
 # Same treatment for the licence: --license-tier demo (the default) needs
-# no key at all, AiFlow's own AIFLOW_MODE default is already "demo". Any
-# other tier means a real key was required above, so write both.
+# no key, since AiFlow's own default mode is already "demo". Any other
+# tier already required a real key above, so write both.
 if [ -n "$LICENSE_KEY" ]; then
   inject_env_var AIFLOW_MODE "live" "$ENV_FILE"
   inject_env_var AIFLOW_LICENSE_KEY "$LICENSE_KEY" "$ENV_FILE"
@@ -496,13 +507,20 @@ log "Pulling images..."
 if ! pull_out="$(docker compose "${COMPOSE_ARGS[@]}" pull 2>&1)"; then
   printf '%s\n' "$pull_out" >&2
   if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
-    && printf '%s' "$pull_out" | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
-    die "Docker socket permission denied (not a GHCR/registry issue). Fix: sudo usermod -aG docker \$USER && newgrp docker, then re-run without sudo; or run the whole script as root, e.g. curl ... | sudo bash -s -- ... (sudo must wrap bash, not curl: 'sudo curl ... | bash' only elevates curl, bash still runs unprivileged)."
+    && printf '%s' "$pull_out" \
+      | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
+    die "Docker socket permission denied (not a GHCR/registry issue). Fix: "\
+"sudo usermod -aG docker \$USER && newgrp docker, then re-run without "\
+"sudo; or run the whole script as root."
   fi
   if printf '%s' "$pull_out" | grep -qiE 'unauthorized|denied'; then
-    die "GHCR pull was denied. If the images are private, pass --ghcr-username/--ghcr-token."
+    die "GHCR pull was denied. If the images are private, pass "\
+"--ghcr-username/--ghcr-token."
   fi
-  if printf '%s' "$pull_out" | grep -qiE 'cannot connect to the docker daemon|daemon is not running|dockerDesktopLinuxEngine'; then
+  if printf '%s' "$pull_out" | grep -qiE \
+    -e 'cannot connect to the docker daemon' \
+    -e 'daemon is not running' \
+    -e 'dockerDesktopLinuxEngine'; then
     die "The Docker daemon isn't running. Start Docker (or Docker Desktop) and re-run."
   fi
   die "docker compose pull failed."
@@ -511,13 +529,16 @@ fi
 log "Starting containers (backend, admin, caddy)..."
 if ! up_out="$(docker compose "${COMPOSE_ARGS[@]}" up -d 2>&1)"; then
   printf '%s\n' "$up_out" >&2
-  if printf '%s' "$up_out" | grep -qiE 'port is already allocated|address already in use'; then
-    die "Port 80 or 443 is already in use on this host, probably by another web server. Stop it, or deploy behind that proxy with deploy-compose.sh instead."
+  if printf '%s' "$up_out" \
+    | grep -qiE 'port is already allocated|address already in use'; then
+    die "Port 80 or 443 is already in use on this host, probably by another "\
+"web server. Stop it, or deploy behind that proxy with --potion compose instead."
   fi
   die "docker compose up failed."
 fi
 
-log "Waiting for https://$API_DOMAIN/health (Caddy issues certificates on first request, this can take a minute)..."
+log "Waiting for https://$API_DOMAIN/health (Caddy issues certificates on "\
+"first request, this can take a minute)..."
 healthy=0
 for _ in $(seq 1 90); do
   if curl -fsS "https://$API_DOMAIN/health" >/dev/null 2>&1; then
@@ -530,12 +551,14 @@ if [ "$healthy" -ne 1 ]; then
   err "$API_DOMAIN did not become healthy over HTTPS in time."
   docker compose "${COMPOSE_ARGS[@]}" logs --tail=30 caddy || true
   docker compose "${COMPOSE_ARGS[@]}" logs --tail=30 backend || true
-  die "Deployment failed health check. Common causes: DNS not yet propagated, or the cloud firewall/security group is blocking inbound 80/443."
+  die "Deployment failed health check. Common causes: DNS not yet "\
+"propagated, or the cloud firewall/security group is blocking inbound 80/443."
 fi
 log "Backend is healthy over HTTPS."
 
 log "Creating admin user $ADMIN_EMAIL..."
-if ! admin_out="$(docker compose "${COMPOSE_ARGS[@]}" exec -T backend python -m scripts.create_admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" < /dev/null 2>&1)"; then
+if ! admin_out="$(docker compose "${COMPOSE_ARGS[@]}" exec -T backend \
+  python -m scripts.create_admin "$ADMIN_EMAIL" "$ADMIN_PASSWORD" < /dev/null 2>&1)"; then
   printf '%s\n' "$admin_out" >&2
   die "create_admin failed."
 fi
@@ -556,13 +579,18 @@ else
   echo "  Admin user:            $ADMIN_EMAIL"
 fi
 if [ "$SECRET_KEY_GENERATED" -eq 1 ]; then
-  echo "  SECRET_KEY was generated and written to $DIR/$ENV_FILE (shown once, back it up)."
+  echo "  SECRET_KEY was generated and written to $DIR/$ENV_FILE"
+  echo "  (shown once, back it up)."
 fi
 echo
 echo "  Widget embed snippet:"
-echo "    <script src=\"https://$API_DOMAIN/widget/aiflow-widget.js\" data-agent=\"YOUR-AGENT-SLUG\" data-api-base=\"https://$API_DOMAIN\"></script>"
+echo "    <script" \
+  "src=\"https://$API_DOMAIN/widget/aiflow-widget.js\"" \
+  "data-agent=\"YOUR-AGENT-SLUG\"" \
+  "data-api-base=\"https://$API_DOMAIN\"></script>"
 echo
-echo "  Twilio webhook URLs (only needed for phone features):"
+echo "  Twilio webhook URLs:"
 echo "    Voice webhook:    https://$API_DOMAIN/api/v1/twilio/inbound"
 echo
-warn "Make sure this server's cloud firewall/security group allows inbound 80 and 443 (this script cannot check that remotely)."
+warn "Make sure this server's cloud firewall/security group allows inbound "\
+"80 and 443 (this script cannot check that remotely)."
