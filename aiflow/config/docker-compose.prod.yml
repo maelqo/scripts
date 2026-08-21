@@ -1,9 +1,10 @@
-# Client deployment compose file: pulls versioned, pre-built images from
-# GitHub Container Registry instead of building from source locally.
+# This is the client deployment compose file: it pulls versioned, pre-built
+# images from GitHub Container Registry instead of building from source locally.
 #
-# Pin the tag to match your change-control comfort level via AIFLOW_VERSION
-# in .env: "2" tracks all 2.x releases, "2.0" tracks patch releases within
-# 2.0, an exact "2.0.0" never moves until you bump it yourself.
+# Pin the tag to match your own change-control comfort level via
+# `AIFLOW_VERSION` in `.env`. `2` tracks every `2.x` release, `2.0` tracks
+# patch releases within `2.0` only, and an exact `2.0.0` never moves until
+# you bump it yourself.
 services:
   backend:
     image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}
@@ -26,8 +27,8 @@ services:
   admin:
     image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-7}
     environment:
-      # Read at container start, not baked into the JS bundle; this is
-      # what lets the same published image work for every client without a rebuild.
+      # This is read at container start rather than baked into the JS bundle,
+      # which is what lets one published image serve every client without a rebuild.
       API_BASE: ${PUBLIC_BASE_URL}
     ports:
       - "5173:8080"

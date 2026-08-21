@@ -1,11 +1,11 @@
-# Adds a Caddy reverse proxy in front of the backend and admin services,
-# issuing and renewing Let's Encrypt certificates automatically. Use this
-# on a bare VPS with no reverse proxy of its own; it's not needed behind a
-# PaaS that already terminates TLS for you.
+# This overlay puts a Caddy reverse proxy in front of the backend and admin
+# services, issuing and renewing Let's Encrypt certificates automatically.
+# Use it on a bare VPS with no reverse proxy of its own. It's not needed
+# behind a PaaS that already terminates TLS for you.
 #
-# backend/admin are intentionally NOT published on host ports here; only
-# Caddy is publicly reachable (80/443), and it reaches backend/admin over
-# the internal Compose network.
+# `backend` and `admin` are deliberately not published on host ports here.
+# Only Caddy is publicly reachable, on `80` and `443`, and it reaches
+# `backend` and `admin` over the internal Compose network instead.
 services:
   backend:
     image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# One command, three deployment topologies: the commercial front door for
-# AiFlow installs, hosted at https://meridflow.com/downloads/install-aiflow.sh.
-# --option picks which of deploy-compose.sh / deploy-caddy.sh /
-# deploy-coolify.sh actually runs; every other flag passes straight through
-# to that script unmodified, since each already accepts --license-tier/
-# --license-key (and every other flag it supports) directly. This script's
-# only real job is picking the right one and fetching it, using the same
-# local-checkout-first, public-mirror-fallback approach the other scripts
-# use for their own companion files.
+# One command, three deployment topologies. This script is the commercial
+# front door for AiFlow installs, hosted at
+# https://meridflow.com/downloads/install-aiflow.sh. `--option` picks
+# which per-topology script actually runs. Every other flag passes
+# straight through to it unmodified, since each one already accepts
+# `--license-tier`, `--license-key`, and every other flag it supports,
+# directly. Its only real job is picking the right script and fetching
+# it, using the same local-checkout-first, public-mirror-fallback pattern
+# used below for a single companion file.
 #
 # Usage:
 #   curl -fsSL https://meridflow.com/downloads/install-aiflow.sh | sudo bash -s -- \
@@ -17,14 +17,15 @@
 #     --api-domain api.client.com --admin-domain admin.client.com \
 #     --install-docker
 #
-# See --help for the flags common to every option; each option accepts
-# more of its own beyond that (domains for caddy/coolify, --postgres for
-# compose/caddy, ...). Run `install-aiflow.sh --option <that one> --help`
-# for the exact, authoritative list for it, or `--env-help` (works with or
-# without --option, the answer is the same either way) to see every
-# variable that can go in .env. This script never asks for
-# --ghcr-username/--ghcr-token: AiFlow's published images are public, and a
-# licence key is the only credential a commercial install ever needs.
+# Run `--help` to see the flags common to every option. Each option also
+# takes more of its own on top of that (domains for caddy or coolify,
+# `--postgres` for compose or caddy, and so on). Run
+# `install-aiflow.sh --option <that one> --help` for the exact,
+# authoritative list for it, or `--env-help` (works with or without
+# `--option`, the answer is the same either way) to see every variable
+# that can go in `.env`. This script never asks for `--ghcr-username` or
+# `--ghcr-token`: AiFlow's published images are public, and a licence key
+# is the only credential a commercial install ever needs.
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
@@ -81,10 +82,11 @@ commercial install ever needs.
 EOF
 }
 
-# Resolved once, before any `cd` (none of this script's own code changes
-# directories, but the scripts it hands off to do): the same
-# local-checkout-first, public-mirror-fallback approach used below for a
-# companion file, just applied to a whole script instead.
+# Resolve this once, before any `cd`. This script's own code never
+# changes directories, but the scripts it hands off to do, so resolving
+# late would break. Same local-checkout-first, public-mirror-fallback
+# pattern used below for a companion file, just applied here to a whole
+# script.
 SCRIPT_DIR=""
 case "${BASH_SOURCE[0]:-}" in
   */*) SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" ;;
@@ -128,8 +130,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# The answer is identical regardless of --option (one backend, one .env),
-# so this doesn't require picking a topology first, unlike everything else.
+# The answer here is identical no matter which `--option` you'd pick, one
+# backend, one `.env`, so this can run before a topology is even chosen,
+# unlike everything else in this script.
 if [ "$ENV_HELP" -eq 1 ]; then
   ENV_EXAMPLE_TMP="$(mktemp)"
   fetch_companion_file ".env.example" "$ENV_EXAMPLE_TMP"
@@ -149,9 +152,10 @@ case "$OPTION" in
   *) die "--option must be one of: compose, caddy, coolify (got '$OPTION')." ;;
 esac
 
-# Coolify is versioned from its own dashboard, not a script flag: forwarding
-# --version to it would just hit its "Unknown option" die(). Strip it and
-# point at the right place instead.
+# Coolify is versioned from its own dashboard, not through a script flag.
+# Forwarding `--version` to it would just trigger an `Unknown option`
+# failure there. Strip it out here and point the user at the right place
+# instead.
 if [ "$OPTION" = "coolify" ] && [ -n "$VERSION" ]; then
   FILTERED=()
   skip_next=0

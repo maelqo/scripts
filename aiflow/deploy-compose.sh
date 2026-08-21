@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pulls the pre-built images and brings them up via Docker Compose.
+# Pulls AiFlow's pre-built images and brings them up with Docker Compose.
 #
 # Usage:
 #   curl -fsSL \
@@ -110,18 +110,22 @@ gen_password() {
 confirm() {
   [ "$ASSUME_YES" -eq 1 ] && return 0
   local reply=""
-  # /dev/tty can fail to open with no controlling terminal attached, which
-  # must never abort the script under set -e; fall through to a "no".
+  # Opening `/dev/tty` can fail when there's no controlling terminal
+  # attached. That must not abort the script under `set -e`, so treat a
+  # failed open as a plain `no` and move on.
   read -r -p "$1 [y/N] " reply 2>/dev/null </dev/tty || true
   case "$reply" in [yY]|[yY][eE][sS]) return 0 ;; *) return 1 ;; esac
 }
 
-# Reads the current value of KEY=... from an env file, empty string if absent.
+# Looks up a `KEY=value` line in an env file and prints the value. Errors
+# are swallowed so a missing key comes back as an empty string instead of
+# tripping `set -e`, letting callers just check for blank.
 env_value() {
   grep -m1 "^${1}=" "$2" 2>/dev/null | cut -d= -f2- || true
 }
 
-# Sets KEY=VALUE in FILE, replacing any existing line for that key.
+# Sets `KEY=VALUE` in an env file, replacing any line already using that
+# key.
 inject_env_var() {
   local key="$1" value="$2" file="$3"
   grep -v "^${key}=" "$file" >"$file.tmp" 2>/dev/null || true
@@ -129,8 +133,9 @@ inject_env_var() {
   mv "$file.tmp" "$file"
 }
 
-# Resolved once, before any `cd`, since BASH_SOURCE is relative to the
-# invocation directory and stops resolving correctly once we move.
+# Resolve this before any `cd` call. `BASH_SOURCE` is relative to the
+# directory the script was invoked from, so it stops resolving correctly
+# once we change directories.
 SCRIPT_DIR=""
 case "${BASH_SOURCE[0]:-}" in
   */*) SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" ;;
@@ -177,8 +182,8 @@ check_docker() {
   fi
 }
 
-# Prints .env.example (the canonical list of variables the backend reads)
-# and exits without deploying anything.
+# `--env-help` just prints `.env.example`, the canonical list of variables
+# the backend reads, then exits without touching anything else.
 if [ "$ENV_HELP" -eq 1 ]; then
   ENV_EXAMPLE_TMP="$(mktemp)"
   fetch_file ".env.example" "$ENV_EXAMPLE_TMP"
@@ -189,9 +194,10 @@ if [ "$ENV_HELP" -eq 1 ]; then
   exit 0
 fi
 
-# A flag or env var value wins; otherwise prompt on a real tty (works even
-# under curl | bash if one is attached). A failed /dev/tty open is swallowed
-# rather than aborting under set -e; the die() below catches anything left.
+# A flag or env var value wins if set. Otherwise we prompt on a real tty,
+# which still works under `curl | bash` when one is attached. A failed
+# `/dev/tty` open is swallowed here instead of aborting under `set -e`.
+# The `die` call further down catches anything still missing.
 [ -n "$ADMIN_EMAIL" ] \
   || read -r -p "Admin email: " ADMIN_EMAIL 2>/dev/null </dev/tty || true
 [ -n "$ADMIN_EMAIL" ] || die "Missing --admin-email (or AIFLOW_ADMIN_EMAIL)."
@@ -206,13 +212,13 @@ if [ "$LICENSE_TIER" != "demo" ] && [ -z "$LICENSE_KEY" ]; then
 "(copy it from your MeridFlow dashboard)."
 fi
 
-# Reads max_ver out of a licence key's own payload, without verifying its
-# signature (this script has no practical way to check an Ed25519 signature
-# in plain bash; that real check happens at boot instead). This is just a
-# best-effort, install-time sanity check that catches an obvious
-# --version/licence mismatch immediately, with a clear message, rather than
-# only discovering it after the fact. A forged key would still fail to
-# verify at boot regardless of what it claims here.
+# Pulls `max_ver` out of a licence key's payload without checking its
+# signature: plain bash has no practical way to verify an Ed25519
+# signature, and the real check happens at boot anyway. This is only a
+# best-effort, install-time sanity check, so a `--version` that doesn't
+# match the licence gets caught immediately with a clear message instead
+# of surfacing later. A forged key would still fail signature verification
+# at boot no matter what it claims here.
 license_max_version() {
   local key="$1" payload_b64 payload_std padded json
   payload_b64="$(printf '%s' "$key" | cut -d. -f3)"
@@ -289,10 +295,11 @@ else
   echo "See $DIR/.env.example for the full list of variables."
   echo "Paste your .env contents below, then press Ctrl+D when done:"
   echo
-  # Written to a temp file first and moved into place only on success: a
-  # bare `cat >"$ENV_FILE" </dev/tty` would truncate $ENV_FILE via its `>`
-  # redirection before the `</dev/tty` open even gets a chance to fail,
-  # wiping out an existing file on a failed or no-tty attempt.
+  # Write to a temp file first and move it into place only once that
+  # succeeds. A bare `cat >"$ENV_FILE" </dev/tty` truncates `$ENV_FILE`
+  # through its `>` redirection before `</dev/tty` even gets a chance to
+  # fail, which would wipe out an existing file on a failed or no-tty
+  # attempt.
   ENV_FILE_TMP="$ENV_FILE.paste.tmp.$$"
   if ! cat >"$ENV_FILE_TMP" </dev/tty; then
     rm -f "$ENV_FILE_TMP"
@@ -328,14 +335,14 @@ if [ -z "$SECRET_KEY" ] \
   fi
 fi
 
-# Applied even to an existing .env left untouched above, so --version takes
-# effect on every run; this only sets the image tag pulled below, it isn't
-# read by the application itself.
+# Written even into an existing `.env` left untouched above, so `--version`
+# takes effect on every run. This only picks the image tag to pull. The
+# application itself never reads it.
 inject_env_var AIFLOW_VERSION "$VERSION" "$ENV_FILE"
 
-# Same treatment for the licence: --license-tier demo (the default) needs
-# no key, since AiFlow's own default mode is already "demo". Any other
-# tier already required a real key above, so write both.
+# The licence gets the same treatment: `--license-tier demo`, the default,
+# needs no key because AiFlow already defaults to demo mode. Any other
+# tier already forced a real key further up, so write both values here.
 if [ -n "$LICENSE_KEY" ]; then
   inject_env_var AIFLOW_MODE "live" "$ENV_FILE"
   inject_env_var AIFLOW_LICENSE_KEY "$LICENSE_KEY" "$ENV_FILE"

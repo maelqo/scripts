@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Installs self-hosted Coolify and prepares
-# everything needed to finish the deploy in its dashboard. Coolify's
-# first-run root-user setup is browser-only with no scriptable equivalent,
-# so this script installs and hands off with exact next steps rather than
-# faking full end-to-end automation.
+# Installs self-hosted Coolify and stages everything needed to finish the
+# deploy from its dashboard. Coolify's first-run root-user setup only
+# happens in the browser, with nothing scriptable to hook into, so this
+# script installs Coolify and hands off with exact next steps instead of
+# pretending it can automate that part too.
 #
 # Usage:
 #   curl -fsSL \
@@ -94,9 +94,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# People sometimes paste a full URL where a bare domain is expected. Left
-# unstripped, PUBLIC_BASE_URL below would end up doubled up as
-# "https://https://...", broken with no error to signal it.
+# Users sometimes paste a full URL where a bare domain is expected. Left
+# unstripped, `PUBLIC_BASE_URL` further down would end up doubled, as
+# `https://https://...`, broken with nothing around to flag it.
 normalize_domain() {
   local original="$1" value="$1"
   value="${value#http://}"
@@ -138,12 +138,15 @@ gen_password() {
   fi
 }
 
-# Reads the current value of KEY=... from an env file, empty string if absent.
+# Looks up a `KEY=value` line in an env file and prints the value. Errors
+# are swallowed so a missing key comes back as an empty string instead of
+# tripping `set -e`, letting callers just check for blank.
 env_value() {
   grep -m1 "^${1}=" "$2" 2>/dev/null | cut -d= -f2- || true
 }
 
-# Sets KEY=VALUE in FILE, replacing any existing line for that key.
+# Sets `KEY=VALUE` in an env file, replacing any line already using that
+# key.
 inject_env_var() {
   local key="$1" value="$2" file="$3"
   grep -v "^${key}=" "$file" >"$file.tmp" 2>/dev/null || true
@@ -151,8 +154,8 @@ inject_env_var() {
   mv "$file.tmp" "$file"
 }
 
-# Only fills KEY in FILE when it isn't already set there, so a value the
-# user already pasted always wins over a --flag convenience default.
+# Fills in KEY only when the env file doesn't already set it, so anything
+# the user pasted in by hand always beats a `--flag` convenience default.
 inject_env_var_if_blank() {
   local key="$1" value="$2" file="$3"
   [ -n "$value" ] || return 0
@@ -160,8 +163,9 @@ inject_env_var_if_blank() {
   inject_env_var "$key" "$value" "$file"
 }
 
-# Resolved once, before any `cd`, since BASH_SOURCE is relative to the
-# invocation directory and stops resolving correctly once we move.
+# Resolve this before any `cd` call. `BASH_SOURCE` is relative to the
+# directory the script was invoked from, so it stops resolving correctly
+# once we change directories.
 SCRIPT_DIR=""
 case "${BASH_SOURCE[0]:-}" in
   */*) SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" ;;
@@ -178,9 +182,10 @@ fetch_file() {
   fi
 }
 
-# Prints .env.example (the canonical list of variables the backend reads)
-# and exits without installing or deploying anything. Handled before the
-# root/Linux checks below, since this doesn't need either.
+# `--env-help` just prints `.env.example`, the canonical list of variables
+# the backend reads, then exits without installing or deploying anything.
+# This runs before the root and Linux checks further down, since printing
+# that list needs neither.
 if [ "$ENV_HELP" -eq 1 ]; then
   ENV_EXAMPLE_TMP="$(mktemp)"
   fetch_file ".env.example" "$ENV_EXAMPLE_TMP"
@@ -284,10 +289,11 @@ else
   echo "into Coolify's own dashboard, Coolify never reads this file directly."
   echo "Paste your intended env contents below, then press Ctrl+D when done:"
   echo
-  # Written to a temp file first and moved into place only on success: a
-  # bare `cat >"$ENV_FILE" </dev/tty` would truncate $ENV_FILE via its `>`
-  # redirection before the `</dev/tty` open even gets a chance to fail,
-  # wiping out an existing file on a failed or no-tty attempt.
+  # Write to a temp file first and move it into place only once that
+  # succeeds. A bare `cat >"$ENV_FILE" </dev/tty` truncates `$ENV_FILE`
+  # through its `>` redirection before `</dev/tty` even gets a chance to
+  # fail, which would wipe out an existing file on a failed or no-tty
+  # attempt.
   ENV_FILE_TMP="$ENV_FILE.paste.tmp.$$"
   if ! cat >"$ENV_FILE_TMP" </dev/tty; then
     rm -f "$ENV_FILE_TMP"
@@ -303,10 +309,10 @@ inject_env_var_if_blank GEMINI_API_KEY "$GEMINI_API_KEY_FLAG" "$ENV_FILE"
 [ -n "$API_DOMAIN" ] \
   && inject_env_var_if_blank PUBLIC_BASE_URL "https://$API_DOMAIN" "$ENV_FILE"
 
-# --license-tier demo (the default) needs no key, since AiFlow's own
-# default mode is already "demo". Any other tier already required a real
-# key above, so pre-fill both; a value already pasted into coolify.env
-# still wins.
+# `--license-tier demo`, the default, needs no key because AiFlow already
+# defaults to demo mode. Any other tier already forced a real key further
+# up, so pre-fill both here. A value already pasted into `coolify.env`
+# still takes priority.
 if [ -n "$LICENSE_KEY" ]; then
   inject_env_var_if_blank AIFLOW_MODE "live" "$ENV_FILE"
   inject_env_var_if_blank AIFLOW_LICENSE_KEY "$LICENSE_KEY" "$ENV_FILE"

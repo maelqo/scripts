@@ -1,13 +1,13 @@
-# A variant with no host port bindings, meant for pasting into Coolify as a
-# "Docker Compose" resource.
+# This variant has no host port bindings, meant for pasting straight into
+# Coolify as a "Docker Compose" resource.
 #
-# Coolify runs its own reverse proxy and expects to reach a service over
-# the internal Docker network, attaching a domain to it in its own UI
-# rather than a host `ports:` mapping. A compose resource that declares
-# `ports:` anyway fights that model: Coolify tries to bind those host ports
-# directly, which on this same host collides with Coolify's own dashboard
-# on :8000 ("port is already allocated"). `expose:` (no host binding,
-# container-to-container only) is the correct shape here.
+# Coolify runs its own reverse proxy and expects to reach a service over the
+# internal Docker network, attaching a domain to it in its own UI instead of
+# through a host `ports:` mapping. A compose resource that declares `ports:`
+# anyway fights that model: Coolify tries to bind those host ports directly,
+# which on this same host collides with Coolify's own dashboard on `8000`
+# (it fails with "port is already allocated"). `expose:`, with no host
+# binding and container-to-container only, is the right shape here.
 services:
   backend:
     image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}
@@ -30,8 +30,8 @@ services:
   admin:
     image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-7}
     environment:
-      # Read at container start, not baked into the JS bundle; this is
-      # what lets the same published image work for every client without a rebuild.
+      # This is read at container start rather than baked into the JS bundle,
+      # which is what lets one published image serve every client without a rebuild.
       API_BASE: ${PUBLIC_BASE_URL}
     expose:
       - "8080"
