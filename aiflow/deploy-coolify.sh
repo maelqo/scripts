@@ -33,29 +33,29 @@ Usage: deploy-coolify.sh [options]
 Installs self-hosted Coolify and prints the exact
 manual dashboard steps to finish deploying AiFlow on it.
 
-All application configuration is staged locally in aiflow/coolify.env, 
-not passed as flags. If that file doesn't already exist, 
-this script prompts you to paste one in (Ctrl+D to finish); 
-write it yourself beforehand for non-interactive use. This file
-is only ever read by this script; Coolify itself never sees it directly.
+All application configuration is staged locally in aiflow/coolify.env,
+not passed as flags. If that file doesn't already exist, this script
+prompts you to paste one in (Ctrl+D to finish); write it yourself
+beforehand for non-interactive use. This file is only ever read by
+this script; Coolify itself never sees it directly.
 
 Options:
-  --skip-install          Already have Coolify, just print the reference block/steps
+  --skip-install          Already have Coolify, just print the reference block and steps
   --force-reinstall       Re-run the installer even if Coolify looks present
-  --gemini-api-key KEY    GEMINI_API_KEY 
+  --gemini-api-key KEY    GEMINI_API_KEY
   --admin-email EMAIL     AIFLOW_ADMIN_EMAIL (pre-fills the printed create_admin command)
   --license-tier TIER     demo|trial|basic|pro|enterprise (default: demo, needs no key)
   --license-key KEY       AIFLOW_LICENSE_KEY (required for any tier but demo)
-  --domain ROOT           derives api.ROOT / admin.ROOT
+  --domain ROOT           derives api.ROOT and admin.ROOT
   --api-domain ...        AIFLOW_API_DOMAIN (instead of --domain)
   --admin-domain ...      AIFLOW_ADMIN_DOMAIN (instead of --domain)
   --ghcr-username USER    GHCR_USERNAME (AiFlow's GHCR account)
   --ghcr-token TOKEN      GHCR_TOKEN (the read-only PAT issued for this client)
-  --dir PATH              Where to save the local docker-compose.coolify.yml/coolify.env
-                          copies (default: ./aiflow)
+  --dir PATH              Where to save the local docker-compose.coolify.yml and
+                          coolify.env copies (default: ./aiflow)
   --repo-ref REF          Git ref to fetch companion files from (default: main)
   --force                 Overwrite an existing coolify.env instead of leaving it alone
-  --env-help              Print every .env variable (with defaults/notes) and exit;
+  --env-help              Print every .env variable (with defaults and notes) and exit;
                           doesn't install or deploy anything
   -h, --help              Show this help
 EOF
@@ -103,8 +103,8 @@ normalize_domain() {
   value="${value#https://}"
   value="${value%%/*}"
   if [ "$value" != "$original" ] && [ -n "$original" ]; then
-    warn "Using bare domain '$value' (stripped protocol/path from '$original'); "\
-"--domain/--api-domain/--admin-domain expect a bare domain, not a full URL."
+    warn "Using bare domain '$value' (stripped the protocol and path from '$original'); "\
+"--domain, --api-domain, and --admin-domain expect a bare domain, not a full URL."
   fi
   printf '%s' "$value"
 }
@@ -330,7 +330,7 @@ db_url_hint="DATABASE_URL=postgresql+asyncpg://"\
 "\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres:5432/\$POSTGRES_DB"
 
 echo
-log "Coolify install step done. The rest happens in its dashboard "
+log "Coolify install step done. The rest happens in its dashboard."
 echo
 echo "Next steps:"
 echo "  1. Visit http://${server_ip}:8000 and complete the one-time root user setup."
@@ -346,9 +346,9 @@ echo "      instead, either point it at a Postgres instance you already run, or"
 echo "      paste docker-compose.postgres.yml's own 'postgres:' service block"
 echo "      into this same Compose resource and set"
 echo "      $db_url_hint"
-echo "      plus POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB, to opt into"
+echo "      plus POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB, to opt into"
 echo "      the bundled container)"
-echo "  4. Under each service's Domains/Ports tab, attach:"
+echo "  4. Under each service's Domains and Ports tab, attach:"
 if [ -n "${API_DOMAIN:-}" ] && [ -n "${ADMIN_DOMAIN:-}" ]; then
   echo "       backend -> $API_DOMAIN  (routes to the container's internal port 8000)"
   echo "       admin   -> $ADMIN_DOMAIN  (routes to the container's internal port 8080)"

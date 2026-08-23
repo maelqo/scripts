@@ -30,12 +30,11 @@ usage() {
 Usage: deploy-compose.sh [options]
 
 Deploys AiFlow's pre-built images via Docker Compose.
-No reverse proxy/TLS is set up by this script.
+This script doesn't set up a reverse proxy or TLS.
 
-All application configuration lives in .env, not in flags. 
-If ./aiflow/.env doesn't already exist, this script 
-prompts you to paste one in (Ctrl+D to finish); write it
-yourself beforehand for non-interactive use.
+All app configuration lives in .env, not in flags. If ./aiflow/.env
+doesn't already exist, this script prompts you to paste one in (press
+Ctrl+D when done); write it yourself beforehand for non-interactive use.
 
 Options:
   --admin-email EMAIL     AIFLOW_ADMIN_EMAIL (required; the first admin user's login)
@@ -45,15 +44,15 @@ Options:
   --ghcr-username USER    GHCR_USERNAME (AiFlow's GHCR account)
   --ghcr-token TOKEN      GHCR_TOKEN (the read-only PAT issued for this client)
   --version TAG           AIFLOW_VERSION (default: 7)
-  --postgres              Also bring up the bundled Postgres container; set
-                          POSTGRES_USER/PASSWORD/DB in .env to override its defaults, or
-                          set DATABASE_URL yourself to point at a database you already run
-                          instead (leave this flag off)
+  --postgres              Also starts the bundled Postgres container. Set
+                          POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB in .env to
+                          override its defaults, or set DATABASE_URL yourself to point at
+                          a database you already run instead (leave this flag off)
   --install-docker        Install Docker via get.docker.com if missing
   --dir PATH              Deployment directory (default: ./aiflow)
   --repo-ref REF          Git ref to fetch companion files from (default: main)
   --force                 Overwrite an existing .env instead of leaving it alone
-  --env-help              Print every .env variable (with defaults/notes) and exit;
+  --env-help              Print every .env variable (with defaults and notes) and exit;
                           doesn't deploy anything
   -y, --yes               Assume yes on confirmations
   -h, --help              Show this help
@@ -155,7 +154,7 @@ fetch_file() {
       "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest" \
       || die "Failed to download $rel (timed out or network error). "\
 "Check this host can reach raw.githubusercontent.com over HTTPS "\
-"(outbound firewall/proxy), then re-run."
+"(an outbound firewall or proxy), then re-run."
   fi
 }
 
@@ -245,9 +244,9 @@ if [ -n "$LICENSE_KEY" ]; then
     MAX_VER="$(license_max_version "$LICENSE_KEY" || true)"
     if [ -n "$MAX_VER" ] && [ "$REQUESTED_MAJOR" -gt "$MAX_VER" ]; then
       die "--version $VERSION (major $REQUESTED_MAJOR) is newer than what "\
-"this licence activates (up to major $MAX_VER). Either pass an older "\
-"--version, or upgrade the licence; AiFlow would reject this combination "\
-"at boot and fall back to demo mode."
+"this licence activates (up to major $MAX_VER). Pick an older --version "\
+"or upgrade the licence: AiFlow rejects this combination at boot and "\
+"falls back to demo mode."
     fi
   else
     warn "Could not validate --version $VERSION against the licence's max "\
@@ -313,12 +312,12 @@ fi
 
 GEMINI_API_KEY="$(env_value GEMINI_API_KEY "$ENV_FILE")"
 [ -n "$GEMINI_API_KEY" ] \
-  || die "GEMINI_API_KEY is missing/blank in $DIR/$ENV_FILE. Add it and "\
-"re-run (see .env.example)."
+  || die "GEMINI_API_KEY is missing or blank in $DIR/$ENV_FILE. Add it and "\
+"re-run."
 
 PUBLIC_BASE_URL="$(env_value PUBLIC_BASE_URL "$ENV_FILE")"
 [ -n "$PUBLIC_BASE_URL" ] \
-  || die "PUBLIC_BASE_URL is missing/blank in $DIR/$ENV_FILE. Add it "\
+  || die "PUBLIC_BASE_URL is missing or blank in $DIR/$ENV_FILE. Add it "\
 "(your backend's real public HTTPS URL) and re-run."
 
 SECRET_KEY_GENERATED=0
@@ -360,7 +359,7 @@ if ! pull_out="$(docker compose "${COMPOSE_ARGS[@]}" pull 2>&1)"; then
   if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
     && printf '%s' "$pull_out" \
       | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
-    die "Docker socket permission denied (not a GHCR/registry issue). Fix: "\
+    die "Docker socket permission denied (not a GHCR-related issue). Fix: "\
 "sudo usermod -aG docker \$USER && newgrp docker, then re-run without "\
 "sudo; or run the whole script as root."
   fi
@@ -418,8 +417,8 @@ log "Deployment complete."
 echo "  Backend (internal):  http://localhost:8000"
 echo "  Admin (internal):    http://localhost:5173"
 echo "  Backend public URL:  $PUBLIC_BASE_URL"
-echo "  Admin public URL:    point your reverse proxy at this host's"
-echo "                       localhost:5173 for your admin subdomain"
+echo "  Admin public URL:    proxy your admin subdomain to this host's"
+echo "                       localhost:5173"
 if [ "$admin_already_existed" -eq 1 ]; then
   echo "  Admin user:           $ADMIN_EMAIL (already existed, password unchanged)"
 elif [ "$ADMIN_PASSWORD_GENERATED" -eq 1 ]; then
@@ -429,7 +428,7 @@ else
   echo "  Admin user:           $ADMIN_EMAIL"
 fi
 if [ "$SECRET_KEY_GENERATED" -eq 1 ]; then
-  echo "  SECRET_KEY was generated and written to $DIR/$ENV_FILE"
+  echo "  Generated a new SECRET_KEY and wrote it to $DIR/$ENV_FILE"
   echo "  (shown once, back it up)."
 fi
 echo

@@ -34,13 +34,12 @@ Usage: deploy-caddy.sh [options]
 Deploys AiFlow behind Caddy on a fresh VPS, with automatic Let's Encrypt TLS.
 One root domain, two subdomains.
 
-All application configuration lives in .env, not in flags. 
-If ./aiflow/.env doesn't already exist, this
-script prompts you to paste one in (Ctrl+D to finish); write it yourself
-beforehand for non-interactive use.
+All application configuration lives in .env, not in flags.
+If ./aiflow/.env doesn't already exist, the script prompts you to paste
+one in (Ctrl+D to finish); write it yourself first for non-interactive use.
 
 Options:
-  --domain ROOT           derives api.ROOT / admin.ROOT
+  --domain ROOT           derives api.ROOT and admin.ROOT
   --api-domain ...        AIFLOW_API_DOMAIN (instead of --domain)
   --admin-domain ...      AIFLOW_ADMIN_DOMAIN (instead of --domain)
   --admin-email EMAIL     AIFLOW_ADMIN_EMAIL (required; the first admin user's login)
@@ -50,10 +49,10 @@ Options:
   --ghcr-username USER    GHCR_USERNAME (AiFlow's GHCR account)
   --ghcr-token TOKEN      GHCR_TOKEN (the read-only PAT issued for this client)
   --version TAG           AIFLOW_VERSION (default: 7)
-  --postgres              Also bring up the bundled Postgres container; set
-                          POSTGRES_USER/PASSWORD/DB in .env to override its defaults, or
-                          set DATABASE_URL yourself to point at a database you already run
-                          instead (leave this flag off)
+  --postgres              Also bring up the bundled Postgres container. Set
+                          POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB in .env to
+                          override its defaults, or set DATABASE_URL yourself to point at
+                          a database you already run instead (leave this flag off)
   --email ADDR            CADDY_ACME_EMAIL (Let's Encrypt contact)
   --skip-dns-check        Don't verify DNS resolves to this host first
   --wait-for-dns          Poll (up to ~10 min) until DNS resolves before continuing
@@ -121,8 +120,8 @@ normalize_domain() {
   value="${value#https://}"
   value="${value%%/*}"
   if [ "$value" != "$original" ] && [ -n "$original" ]; then
-    warn "Using bare domain '$value'  from '$original'; "\
-"--domain/--api-domain/--admin-domain expect a bare domain, not a full URL."
+    warn "Using bare domain '$value' from '$original': --domain, "\
+"--api-domain, and --admin-domain all expect a bare domain, not a full URL."
   fi
   printf '%s' "$value"
 }
@@ -192,9 +191,9 @@ fetch_file() {
     log "Fetching $rel from ref $REPO_REF"
     curl -fsSL --connect-timeout 10 --max-time 60 \
       "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest" \
-      || die "Failed to download $rel (timed out or network error). "\
+      || die "Failed to download $rel (timed out or a network error). "\
 "Check this host can reach raw.githubusercontent.com over HTTPS "\
-"(outbound firewall/proxy), then re-run."
+"(outbound firewall or proxy), then re-run."
   fi
 }
 
@@ -327,7 +326,7 @@ if [ -z "$API_DOMAIN" ] || [ -z "$ADMIN_DOMAIN" ]; then
   [ -z "$ADMIN_DOMAIN" ] && [ -n "$DOMAIN" ] && ADMIN_DOMAIN="admin.$DOMAIN"
 fi
 [ -n "$API_DOMAIN" ] && [ -n "$ADMIN_DOMAIN" ] \
-  || die "Missing --domain (or --api-domain/--admin-domain)."
+  || die "Missing --domain (or --api-domain and --admin-domain)."
 
 PUBLIC_BASE_URL="https://$API_DOMAIN"
 
@@ -356,9 +355,10 @@ if [ "$SKIP_DNS_CHECK" -ne 1 ]; then
       [ "$WAIT_FOR_DNS" -eq 1 ] && sleep 10
     done
     if [ "$ok" -ne 1 ]; then
-      warn "$API_DOMAIN / $ADMIN_DOMAIN do not both resolve to this host's IP ($ip) yet."
+      warn "$API_DOMAIN and $ADMIN_DOMAIN don't both resolve to this host's "\
+"IP ($ip) yet."
       warn "Caddy will fail to issue certificates until DNS propagates. Point "\
-"their A/AAAA records here, or pass --wait-for-dns / --skip-dns-check."
+"their A or AAAA record here, or pass --wait-for-dns or --skip-dns-check."
       if [ "$ASSUME_YES" -ne 1 ]; then
         # Only bail out on an explicit `no` typed at a real terminal. With
         # no controlling terminal attached, the common case for
@@ -460,7 +460,7 @@ fi
 
 GEMINI_API_KEY="$(env_value GEMINI_API_KEY "$ENV_FILE")"
 [ -n "$GEMINI_API_KEY" ] \
-  || die "GEMINI_API_KEY is missing/blank in $DIR/$ENV_FILE. Add it and "\
+  || die "GEMINI_API_KEY is missing or blank in $DIR/$ENV_FILE. Add it and "\
 "re-run."
 
 EXISTING_PUBLIC_BASE_URL="$(env_value PUBLIC_BASE_URL "$ENV_FILE")"
@@ -468,9 +468,9 @@ if [ -z "$EXISTING_PUBLIC_BASE_URL" ]; then
   inject_env_var PUBLIC_BASE_URL "$PUBLIC_BASE_URL" "$ENV_FILE"
 elif [ "$EXISTING_PUBLIC_BASE_URL" != "$PUBLIC_BASE_URL" ]; then
   warn "$ENV_FILE's PUBLIC_BASE_URL ($EXISTING_PUBLIC_BASE_URL) differs "\
-"from https://$API_DOMAIN (derived from --domain/--api-domain); leaving "\
+"from https://$API_DOMAIN (derived from --domain or --api-domain). Leaving "\
 "your value in place, but Caddy is about to request a certificate for "\
-"$API_DOMAIN specifically, make sure that's intentional."
+"$API_DOMAIN specifically, so make sure that's intentional."
   PUBLIC_BASE_URL="$EXISTING_PUBLIC_BASE_URL"
 fi
 
@@ -520,13 +520,13 @@ if ! pull_out="$(docker compose "${COMPOSE_ARGS[@]}" pull 2>&1)"; then
   if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
     && printf '%s' "$pull_out" \
       | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
-    die "Docker socket permission denied (not a GHCR/registry issue). Fix: "\
-"sudo usermod -aG docker \$USER && newgrp docker, then re-run without "\
-"sudo; or run the whole script as root."
+    die "Docker socket permission denied (not a GHCR or registry issue). "\
+"Fix: sudo usermod -aG docker \$USER && newgrp docker, then re-run "\
+"without sudo; or run the whole script as root."
   fi
   if printf '%s' "$pull_out" | grep -qiE 'unauthorized|denied'; then
-    die "GHCR pull was denied. If the images are private, pass "\
-"--ghcr-username/--ghcr-token."
+    die "GHCR pull was denied. If the images are private, pass both "\
+"--ghcr-username and --ghcr-token."
   fi
   if printf '%s' "$pull_out" | grep -qiE \
     -e 'cannot connect to the docker daemon' \
@@ -543,7 +543,7 @@ if ! up_out="$(docker compose "${COMPOSE_ARGS[@]}" up -d 2>&1)"; then
   if printf '%s' "$up_out" \
     | grep -qiE 'port is already allocated|address already in use'; then
     die "Port 80 or 443 is already in use on this host, probably by another "\
-"web server. Stop it, or deploy behind that proxy with --potion compose instead."
+"web server. Stop it, or put this deployment behind that proxy instead."
   fi
   die "docker compose up failed."
 fi
@@ -562,8 +562,9 @@ if [ "$healthy" -ne 1 ]; then
   err "$API_DOMAIN did not become healthy over HTTPS in time."
   docker compose "${COMPOSE_ARGS[@]}" logs --tail=30 caddy || true
   docker compose "${COMPOSE_ARGS[@]}" logs --tail=30 backend || true
-  die "Deployment failed health check. Common causes: DNS not yet "\
-"propagated, or the cloud firewall/security group is blocking inbound 80/443."
+  die "Deployment failed the health check. Common causes: DNS hasn't "\
+"propagated yet, or the cloud firewall or security group is blocking "\
+"inbound 80/443."
 fi
 log "Backend is healthy over HTTPS."
 
@@ -585,7 +586,7 @@ if [ "$admin_already_existed" -eq 1 ]; then
   echo "  Admin user:            $ADMIN_EMAIL (already existed, password unchanged)"
 elif [ "$ADMIN_PASSWORD_GENERATED" -eq 1 ]; then
   echo "  Admin user:            $ADMIN_EMAIL"
-  echo "  Admin password:        $ADMIN_PASSWORD  (generated, shown once, save it now)"
+  echo "  Admin password:        $ADMIN_PASSWORD (generated, shown once, save it now)"
 else
   echo "  Admin user:            $ADMIN_EMAIL"
 fi
@@ -603,5 +604,5 @@ echo
 echo "  Twilio webhook URLs:"
 echo "    Voice webhook:    https://$API_DOMAIN/api/v1/twilio/inbound"
 echo
-warn "Make sure this server's cloud firewall/security group allows inbound "\
-"80 and 443 (this script cannot check that remotely)."
+warn "Make sure this server's cloud firewall or security group allows "\
+"inbound 80 and 443 (this script can't check that remotely)."

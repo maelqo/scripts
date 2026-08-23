@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 # One command, three deployment topologies. This script is the commercial
 # front door for AiFlow installs, hosted at
-# https://meridflow.com/downloads/install-aiflow.sh. `--option` picks
-# which per-topology script actually runs. Every other flag passes
-# straight through to it unmodified, since each one already accepts
-# `--license-tier`, `--license-key`, and every other flag it supports,
-# directly. Its only real job is picking the right script and fetching
-# it, using the same local-checkout-first, public-mirror-fallback pattern
-# used below for a single companion file.
+# https://meridflow.com/downloads/install-aiflow.sh.
 #
 # Usage:
 #   curl -fsSL https://meridflow.com/downloads/install-aiflow.sh | sudo bash -s -- \
@@ -17,15 +11,6 @@
 #     --api-domain api.client.com --admin-domain admin.client.com \
 #     --install-docker
 #
-# Run `--help` to see the flags common to every option. Each option also
-# takes more of its own on top of that (domains for caddy or coolify,
-# `--postgres` for compose or caddy, and so on). Run
-# `install-aiflow.sh --option <that one> --help` for the exact,
-# authoritative list for it, or `--env-help` (works with or without
-# `--option`, the answer is the same either way) to see every variable
-# that can go in `.env`. This script never asks for `--ghcr-username` or
-# `--ghcr-token`: AiFlow's published images are public, and a licence key
-# is the only credential a commercial install ever needs.
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 
@@ -63,20 +48,20 @@ Common flags every topology accepts:
                                     incompatible --version is refused rather than silently
                                     falling back to demo at boot
   --version TAG                     Image tag to deploy. A real flag for --option
-                                    compose/caddy; for --option coolify, Coolify is
+                                    compose or caddy; for --option coolify, Coolify is
                                     versioned from its own dashboard instead, so this
                                     prints a reminder rather than being forwarded as a
                                     script flag
-  --install-docker                  Install Docker if missing (compose/caddy only;
+  --install-docker                  Install Docker if missing (compose and caddy only;
                                     Coolify's own installer handles Docker itself)
-  --env-help                        Print every .env variable (with defaults/notes) and
-                                    exit; works with or without --option, doesn't deploy
-                                    anything
+  --env-help                        Print every .env variable (with defaults and notes)
+                                    and exit; works with or without --option, doesn't
+                                    deploy anything
   --repo-ref REF                    Git ref to fetch from (default: main)
   -h, --help                        Without --option, show this; with --option, forwards
                                     to that script's own --help instead
 
-Options this script does NOT expose: --ghcr-username/--ghcr-token. AiFlow's
+Options this script does NOT expose: --ghcr-username and --ghcr-token. AiFlow's
 published images are public; a licence key is the only credential a
 commercial install ever needs.
 EOF
@@ -106,7 +91,7 @@ fetch_companion_file() {
       "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest" \
       || die "Failed to download $rel (timed out or network error). "\
 "Check this host can reach raw.githubusercontent.com over HTTPS "\
-"(outbound firewall/proxy), then re-run."
+"(an outbound firewall or proxy), then re-run."
   fi
 }
 
@@ -189,7 +174,7 @@ else
     "$REPO_RAW_BASE/$REPO_REF/aiflow/$SCRIPT_NAME" -o "$TARGET" \
     || die "Failed to download $SCRIPT_NAME (timed out or network error). "\
 "Check this host can reach raw.githubusercontent.com over HTTPS "\
-"(outbound firewall/proxy), then re-run."
+"(an outbound firewall or proxy), then re-run."
 fi
 
 exec bash "$TARGET" "${ARGS[@]}"
