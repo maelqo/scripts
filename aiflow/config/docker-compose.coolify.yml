@@ -10,7 +10,7 @@
 # binding and container-to-container only, is the right shape here.
 services:
   backend:
-    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}
+    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-8}
     env_file:
       - .env
     environment:
@@ -28,7 +28,7 @@ services:
       retries: 3
 
   admin:
-    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-7}
+    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-8}
     environment:
       # This is read at container start rather than baked into the JS bundle,
       # which is what lets one published image serve every client without a rebuild.

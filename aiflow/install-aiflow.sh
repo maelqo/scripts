@@ -26,12 +26,12 @@ usage() {
   cat <<'EOF'
 Usage: install-aiflow.sh --option <compose|caddy|coolify> [options...]
 
---option picks the deployment topology; every other flag passes straight
-through, unmodified, to that topology's own script (deploy-compose.sh,
-deploy-caddy.sh, or deploy-coolify.sh). Each accepts its own flag set on
-top of the common ones below (a plain Compose deployment doesn't need a
-domain, and a Caddy one does), so see the exact, authoritative list for
-the option you picked with:
+--option picks the deployment topology. Every other flag is passed
+through untouched to that topology's own script.
+
+Each topology takes its own flags on top of the common ones below. A
+plain Compose deployment needs no domain; a Caddy one does. For the full
+list for the option you picked, run:
 
     install-aiflow.sh --option caddy --help
 
@@ -42,28 +42,26 @@ Common flags every topology accepts:
   --admin-email EMAIL               The first admin user's login
   --license-tier TIER               demo|trial|basic|pro|enterprise (default: demo, needs
                                     no key)
-  --license-key KEY                 From your MeridFlow dashboard; required for any tier
-                                    but demo. The version you deploy is validated against
-                                    this licence's highest activated major version; an
-                                    incompatible --version is refused rather than silently
-                                    falling back to demo at boot
-  --version TAG                     Image tag to deploy. A real flag for --option
-                                    compose or caddy; for --option coolify, Coolify is
-                                    versioned from its own dashboard instead, so this
-                                    prints a reminder rather than being forwarded as a
-                                    script flag
-  --install-docker                  Install Docker if missing (compose and caddy only;
-                                    Coolify's own installer handles Docker itself)
-  --env-help                        Print every .env variable (with defaults and notes)
-                                    and exit; works with or without --option, doesn't
-                                    deploy anything
+  --license-key KEY                 From your MeridFlow dashboard. Required for every
+                                    tier but demo. The version you deploy is checked
+                                    against the highest major this licence activates,
+                                    and a mismatch is refused up front rather than
+                                    starting in demo mode later
+  --version TAG                     Image tag to deploy. Used by --option compose
+                                    and caddy. Coolify holds its version in its own
+                                    dashboard, so there this only prints a reminder
+  --install-docker                  Install Docker if it is missing. For compose and
+                                    caddy only, as Coolify installs its own
+  --env-help                        Print every .env variable, with defaults and
+                                    notes, then exit without deploying anything. Works
+                                    with or without --option
   --repo-ref REF                    Git ref to fetch from (default: main)
-  -h, --help                        Without --option, show this; with --option, forwards
-                                    to that script's own --help instead
+  -h, --help                        Show this. With --option, shows that script's
+                                    own help instead
 
-Options this script does NOT expose: --ghcr-username and --ghcr-token. AiFlow's
-published images are public; a licence key is the only credential a
-commercial install ever needs.
+This script does not expose --ghcr-username or --ghcr-token. AiFlow's
+published images are public, and a licence key is the only credential a
+commercial install needs.
 EOF
 }
 
@@ -89,9 +87,9 @@ fetch_companion_file() {
     log "Fetching $rel from ref $REPO_REF"
     curl -fsSL --connect-timeout 10 --max-time 60 \
       "$REPO_RAW_BASE/$REPO_REF/aiflow/config/$rel" -o "$dest" \
-      || die "Failed to download $rel (timed out or network error). "\
-"Check this host can reach raw.githubusercontent.com over HTTPS "\
-"(an outbound firewall or proxy), then re-run."
+      || die "Could not download $rel. Check this host can reach "\
+"raw.githubusercontent.com over HTTPS, then try again. An outbound "\
+"firewall or proxy is the usual cause."
   fi
 }
 
@@ -130,11 +128,11 @@ fi
 
 if [ -z "$OPTION" ]; then
   usage
-  die "Missing required --option compose|caddy|coolify."
+  die "--option is required. Pick compose, caddy, or coolify."
 fi
 case "$OPTION" in
   compose|caddy|coolify) : ;;
-  *) die "--option must be one of: compose, caddy, coolify (got '$OPTION')." ;;
+  *) die "--option must be compose, caddy, or coolify. Got '$OPTION'." ;;
 esac
 
 # Coolify is versioned from its own dashboard, not through a script flag.
@@ -156,10 +154,9 @@ if [ "$OPTION" = "coolify" ] && [ -n "$VERSION" ]; then
     FILTERED+=("$arg")
   done
   ARGS=("${FILTERED[@]}")
-  warn "--version isn't a deploy-coolify.sh flag; Coolify deployments are "\
-"versioned from its own dashboard. After this script finishes, add "\
-"AIFLOW_VERSION=$VERSION to the environment variables you paste into "\
-"Coolify's UI in step 3 (or set it there directly)."
+  warn "deploy-coolify.sh takes no --version. Coolify holds the version in "\
+"its own dashboard. When this finishes, add AIFLOW_VERSION=$VERSION to "\
+"the variables you paste into Coolify at step 3."
 fi
 
 SCRIPT_NAME="deploy-$OPTION.sh"
@@ -172,9 +169,9 @@ else
   TARGET="$(mktemp)"
   curl -fsSL --connect-timeout 10 --max-time 60 \
     "$REPO_RAW_BASE/$REPO_REF/aiflow/$SCRIPT_NAME" -o "$TARGET" \
-    || die "Failed to download $SCRIPT_NAME (timed out or network error). "\
-"Check this host can reach raw.githubusercontent.com over HTTPS "\
-"(an outbound firewall or proxy), then re-run."
+    || die "Could not download $SCRIPT_NAME. Check this host can reach "\
+"raw.githubusercontent.com over HTTPS, then try again. An outbound "\
+"firewall or proxy is the usual cause."
 fi
 
 exec bash "$TARGET" "${ARGS[@]}"

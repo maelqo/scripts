@@ -32,9 +32,9 @@ Usage: deploy-compose.sh [options]
 Deploys AiFlow's pre-built images via Docker Compose.
 This script doesn't set up a reverse proxy or TLS.
 
-All app configuration lives in .env, not in flags. If ./aiflow/.env
-doesn't already exist, this script prompts you to paste one in (press
-Ctrl+D when done); write it yourself beforehand for non-interactive use.
+All application configuration lives in .env, not in flags. If
+./aiflow/.env does not exist, this script asks you to paste one in and
+finish with Ctrl+D. Write it yourself first to run this unattended.
 
 Options:
   --admin-email EMAIL     AIFLOW_ADMIN_EMAIL (required; the first admin user's login)
@@ -43,17 +43,17 @@ Options:
   --license-key KEY       AIFLOW_LICENSE_KEY (required for any tier but demo)
   --ghcr-username USER    GHCR_USERNAME (AiFlow's GHCR account)
   --ghcr-token TOKEN      GHCR_TOKEN (the read-only PAT issued for this client)
-  --version TAG           AIFLOW_VERSION (default: 7)
-  --postgres              Also starts the bundled Postgres container. Set
-                          POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB in .env to
-                          override its defaults, or set DATABASE_URL yourself to point at
-                          a database you already run instead (leave this flag off)
+  --version TAG           AIFLOW_VERSION (default: 8)
+  --postgres              Also start the bundled Postgres container. Override its
+                          defaults with POSTGRES_USER, POSTGRES_PASSWORD, and
+                          POSTGRES_DB in .env. To use a database you already run,
+                          leave this flag off and set DATABASE_URL instead
   --install-docker        Install Docker via get.docker.com if missing
   --dir PATH              Deployment directory (default: ./aiflow)
   --repo-ref REF          Git ref to fetch companion files from (default: main)
   --force                 Overwrite an existing .env instead of leaving it alone
-  --env-help              Print every .env variable (with defaults and notes) and exit;
-                          doesn't deploy anything
+  --env-help              Print every .env variable, with defaults and notes,
+                          then exit without deploying
   -y, --yes               Assume yes on confirmations
   -h, --help              Show this help
 EOF
@@ -65,7 +65,7 @@ LICENSE_TIER="${AIFLOW_LICENSE_TIER:-demo}"
 LICENSE_KEY="${AIFLOW_LICENSE_KEY:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_TOKEN="${GHCR_TOKEN:-}"
-VERSION="${AIFLOW_VERSION:-7}"
+VERSION="${AIFLOW_VERSION:-8}"
 POSTGRES=0
 ENV_HELP=0
 
@@ -164,8 +164,8 @@ check_docker() {
       log "Docker not found, installing via get.docker.com..."
       curl -fsSL https://get.docker.com | sh
     else
-      die "Docker is not installed. Install it (curl -fsSL https://get.docker.com "\
-"| sh) or re-run with --install-docker."
+      die "Docker is not installed. Install it with 'curl -fsSL "\
+"https://get.docker.com | sh', or re-run this script with --install-docker."
     fi
   fi
   docker compose version >/dev/null 2>&1 \
@@ -174,9 +174,9 @@ check_docker() {
   docker_ping_out=""
   if ! docker_ping_out="$(docker info 2>&1 1>/dev/null)"; then
     if printf '%s' "$docker_ping_out" | grep -qiE 'permission denied'; then
-      die "Current user can't access the Docker socket. Fix: "\
-"sudo usermod -aG docker \$USER && newgrp docker, then re-run without "\
-"sudo; or run the whole script as root."
+      die "This user cannot reach the Docker socket. Either run "\
+"'sudo usermod -aG docker \$USER && newgrp docker' and start again without "\
+"sudo, or run the whole script as root."
     fi
   fi
 }
@@ -207,8 +207,8 @@ case "$LICENSE_TIER" in
 "(got '$LICENSE_TIER')." ;;
 esac
 if [ "$LICENSE_TIER" != "demo" ] && [ -z "$LICENSE_KEY" ]; then
-  die "--license-tier $LICENSE_TIER requires --license-key "\
-"(copy it from your MeridFlow dashboard)."
+  die "--license-tier $LICENSE_TIER also needs --license-key. Copy the key "\
+"from your MeridFlow dashboard."
 fi
 
 # Pulls `max_ver` out of a licence key's payload without checking its
@@ -243,16 +243,14 @@ if [ -n "$LICENSE_KEY" ]; then
   if [ -n "$REQUESTED_MAJOR" ]; then
     MAX_VER="$(license_max_version "$LICENSE_KEY" || true)"
     if [ -n "$MAX_VER" ] && [ "$REQUESTED_MAJOR" -gt "$MAX_VER" ]; then
-      die "--version $VERSION (major $REQUESTED_MAJOR) is newer than what "\
-"this licence activates (up to major $MAX_VER). Pick an older --version "\
-"or upgrade the licence: AiFlow rejects this combination at boot and "\
-"falls back to demo mode."
+      die "--version $VERSION is major $REQUESTED_MAJOR, but this licence "\
+"only activates up to major $MAX_VER. Pass an older --version, or upgrade "\
+"the licence. As it stands, AiFlow would start in demo mode."
     fi
   else
-    warn "Could not validate --version $VERSION against the licence's max "\
-"activated major version (not a plain X or X.Y.Z tag, e.g. 'latest'); if "\
-"it resolves to a newer major than the licence allows, AiFlow falls back "\
-"to demo mode at boot rather than refusing to start."
+    warn "Could not check --version $VERSION against the licence, because "\
+"it is not a plain X or X.Y.Z tag. If it turns out to be a newer major "\
+"than the licence allows, AiFlow will start in demo mode."
   fi
 fi
 
@@ -302,8 +300,8 @@ else
   ENV_FILE_TMP="$ENV_FILE.paste.tmp.$$"
   if ! cat >"$ENV_FILE_TMP" </dev/tty; then
     rm -f "$ENV_FILE_TMP"
-    die "Could not read from a terminal to paste into. If running "\
-"non-interactively, write $DIR/$ENV_FILE yourself before running this script."
+    die "There is no terminal to paste into. Write $DIR/$ENV_FILE yourself "\
+"before running this script unattended."
   fi
   mv "$ENV_FILE_TMP" "$ENV_FILE"
   echo
@@ -329,8 +327,8 @@ if [ -z "$SECRET_KEY" ] \
     inject_env_var SECRET_KEY "$SECRET_KEY" "$ENV_FILE"
     SECRET_KEY_GENERATED=1
   else
-    die "$ENV_FILE has no SECRET_KEY; pass --force to replace it (you'll be "\
-"prompted to paste a fresh one)."
+    die "$ENV_FILE has no SECRET_KEY. Pass --force to replace the file. You "\
+"will be asked to paste a new one."
   fi
 fi
 
@@ -359,19 +357,19 @@ if ! pull_out="$(docker compose "${COMPOSE_ARGS[@]}" pull 2>&1)"; then
   if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
     && printf '%s' "$pull_out" \
       | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
-    die "Docker socket permission denied (not a GHCR-related issue). Fix: "\
-"sudo usermod -aG docker \$USER && newgrp docker, then re-run without "\
-"sudo; or run the whole script as root."
+    die "Docker refused the socket, so this is not a registry problem. "\
+"Either run 'sudo usermod -aG docker \$USER && newgrp docker' and start "\
+"again without sudo, or run the whole script as root."
   fi
   if printf '%s' "$pull_out" | grep -qiE 'unauthorized|denied'; then
-    die "GHCR pull was denied. If the images are private, pass "\
-"--ghcr-username/--ghcr-token."
+    die "The registry refused the pull. If the images are private, pass "\
+"both --ghcr-username and --ghcr-token."
   fi
   if printf '%s' "$pull_out" | grep -qiE \
     -e 'cannot connect to the docker daemon' \
     -e 'daemon is not running' \
     -e 'dockerDesktopLinuxEngine'; then
-    die "The Docker daemon isn't running. Start Docker (or Docker Desktop) and re-run."
+    die "The Docker daemon is not running. Start Docker, then run this again."
   fi
   die "docker compose pull failed."
 fi
@@ -381,7 +379,8 @@ if ! up_out="$(docker compose "${COMPOSE_ARGS[@]}" up -d 2>&1)"; then
   printf '%s\n' "$up_out" >&2
   if printf '%s' "$up_out" \
     | grep -qiE 'port is already allocated|address already in use'; then
-    die "A required port (8000 or 5173) is already in use on this host."
+    die "Port 8000 or 5173 is already taken on this host. Free it, then run "\
+"this again."
   fi
   die "docker compose up failed."
 fi
@@ -396,9 +395,10 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 if [ "$healthy" -ne 1 ]; then
-  err "Backend did not become healthy in time."
+  err "The backend did not answer in time."
   docker compose "${COMPOSE_ARGS[@]}" logs --tail=50 backend || true
-  die "Deployment failed health check."
+  die "The deployment failed its health check. The backend log above "\
+"should say why."
 fi
 log "Backend is healthy."
 
@@ -428,9 +428,13 @@ else
   echo "  Admin user:           $ADMIN_EMAIL"
 fi
 if [ "$SECRET_KEY_GENERATED" -eq 1 ]; then
-  echo "  Generated a new SECRET_KEY and wrote it to $DIR/$ENV_FILE"
-  echo "  (shown once, back it up)."
+  echo "  A SECRET_KEY was generated and written to $DIR/$ENV_FILE."
+  echo "  Back that file up; the key is not shown again."
 fi
 echo
-warn "These ports are plain HTTP and not publicly reachable behind TLS yet."
-warn "Put a reverse proxy in front, or re-run with scripts/deploy-caddy.sh instead."
+echo "  Metrics stay off until you set METRICS_TOKEN in $DIR/$ENV_FILE."
+echo "  Generate a token, then have your scraper send it as a bearer token:"
+echo "      openssl rand -base64 32"
+echo
+warn "These ports serve plain HTTP and are not behind TLS yet."
+warn "Put a reverse proxy in front, or run deploy-caddy.sh instead."

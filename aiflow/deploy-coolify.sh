@@ -34,13 +34,12 @@ Installs self-hosted Coolify and prints the exact
 manual dashboard steps to finish deploying AiFlow on it.
 
 All application configuration is staged locally in aiflow/coolify.env,
-not passed as flags. If that file doesn't already exist, this script
-prompts you to paste one in (Ctrl+D to finish); write it yourself
-beforehand for non-interactive use. This file is only ever read by
-this script; Coolify itself never sees it directly.
+not passed as flags. If that file does not exist, this script asks you to
+paste one in and finish with Ctrl+D. Write it yourself first to run this
+unattended. Only this script reads the file. Coolify never sees it.
 
 Options:
-  --skip-install          Already have Coolify, just print the reference block and steps
+  --skip-install          Coolify is already installed: just print the steps
   --force-reinstall       Re-run the installer even if Coolify looks present
   --gemini-api-key KEY    GEMINI_API_KEY
   --admin-email EMAIL     AIFLOW_ADMIN_EMAIL (pre-fills the printed create_admin command)
@@ -55,8 +54,8 @@ Options:
                           coolify.env copies (default: ./aiflow)
   --repo-ref REF          Git ref to fetch companion files from (default: main)
   --force                 Overwrite an existing coolify.env instead of leaving it alone
-  --env-help              Print every .env variable (with defaults and notes) and exit;
-                          doesn't install or deploy anything
+  --env-help              Print every .env variable, with defaults and notes,
+                          then exit without installing or deploying
   -h, --help              Show this help
 EOF
 }
@@ -103,8 +102,8 @@ normalize_domain() {
   value="${value#https://}"
   value="${value%%/*}"
   if [ "$value" != "$original" ] && [ -n "$original" ]; then
-    warn "Using bare domain '$value' (stripped the protocol and path from '$original'); "\
-"--domain, --api-domain, and --admin-domain expect a bare domain, not a full URL."
+    warn "Read '$value' from '$original'. These flags want a bare domain, "\
+"not a full URL."
   fi
   printf '%s' "$value"
 }
@@ -118,8 +117,8 @@ case "$LICENSE_TIER" in
 "(got '$LICENSE_TIER')." ;;
 esac
 if [ "$LICENSE_TIER" != "demo" ] && [ -z "$LICENSE_KEY" ]; then
-  die "--license-tier $LICENSE_TIER requires --license-key "\
-"(copy it from your MeridFlow dashboard)."
+  die "--license-tier $LICENSE_TIER also needs --license-key. Copy the key "\
+"from your MeridFlow dashboard."
 fi
 
 gen_secret() {
@@ -199,11 +198,10 @@ if [ "$ENV_HELP" -eq 1 ]; then
 fi
 
 if [ "$(id -u)" -ne 0 ]; then
-  die "This script must run as root (Coolify's own installer requires it). "\
-"Re-run with sudo."
+  die "Coolify's own installer needs root. Run this again with sudo."
 fi
 if [ "$(uname -s)" != "Linux" ]; then
-  die "Coolify only supports Linux hosts."
+  die "Coolify runs on Linux only."
 fi
 
 arch="$(uname -m)"
@@ -218,10 +216,9 @@ mem_gb=$((mem_kb / 1024 / 1024))
 disk_gb="$(df -Pk / | awk 'NR==2 {print int($4/1024/1024)}')"
 cpus="$(nproc 2>/dev/null || echo 1)"
 if [ "$mem_gb" -lt 2 ] || [ "$disk_gb" -lt 30 ] || [ "$cpus" -lt 2 ]; then
-  warn "This host looks below Coolify's documented minimum "\
-"(2 vCPU / 2GB RAM / 30GB free disk)."
-  warn "Detected: ${cpus} vCPU, ${mem_gb}GB RAM, ${disk_gb}GB free disk. "\
-"Continuing anyway, but expect it to struggle."
+  warn "Coolify asks for at least 2 vCPU, 2GB of RAM, and 30GB of free "\
+"disk. This host has ${cpus} vCPU, ${mem_gb}GB RAM, and ${disk_gb}GB free."
+  warn "Carrying on anyway, but expect it to struggle."
 fi
 
 already_installed=0
@@ -233,15 +230,15 @@ fi
 if [ "$SKIP_INSTALL" -eq 1 ]; then
   log "Skipping install (--skip-install)."
 elif [ "$already_installed" -eq 1 ] && [ "$FORCE_REINSTALL" -ne 1 ]; then
-  log "Coolify already looks installed, skipping (pass --force-reinstall "\
-"to re-run the installer anyway)."
+  log "Coolify is already installed, so skipping it. Pass --force-reinstall "\
+"to run the installer anyway."
 else
-  log "Installing Coolify (this runs Coolify's own official installer)..."
+  log "Installing Coolify with its own official installer..."
   curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 fi
 
-log "Waiting for the Coolify dashboard to come up (image pulls can take a "\
-"few minutes)..."
+log "Waiting for the Coolify dashboard. Pulling its images can take a few "\
+"minutes..."
 up=0
 for _ in $(seq 1 60); do
   if curl -fsS "http://localhost:8000" >/dev/null 2>&1; then
@@ -251,8 +248,8 @@ for _ in $(seq 1 60); do
   sleep 5
 done
 if [ "$up" -ne 1 ]; then
-  warn "Coolify's dashboard isn't responding on :8000 yet. Check 'docker "\
-"ps' and the installer's own output; it may just need more time."
+  warn "Coolify's dashboard is not answering on port 8000 yet. It may just "\
+"need longer. Check 'docker ps' and the installer output above."
 fi
 
 mkdir -p "$DIR"
@@ -263,12 +260,11 @@ fetch_file ".env.example" "$DIR/.env.example" \
 
 if [ -n "$GHCR_TOKEN" ]; then
   [ -n "$GHCR_USERNAME" ] || die "--ghcr-token given without --ghcr-username."
-  log "Logging in to ghcr.io as $GHCR_USERNAME (on this host, so Coolify's "\
-"own deployments can reuse it)..."
+  log "Logging in to ghcr.io as $GHCR_USERNAME, on this host, so Coolify "\
+"can reuse it..."
   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-  log "Coolify mounts this host's docker credential store into its "\
-"deployment containers, so no separate registry step is needed in its UI "\
-"for this image."
+  log "Coolify reuses this login, so you do not need to add the registry "\
+"in its dashboard."
 fi
 
 if [ -z "$API_DOMAIN" ] && [ -n "$DOMAIN" ]; then API_DOMAIN="api.$DOMAIN"; fi
@@ -297,8 +293,8 @@ else
   ENV_FILE_TMP="$ENV_FILE.paste.tmp.$$"
   if ! cat >"$ENV_FILE_TMP" </dev/tty; then
     rm -f "$ENV_FILE_TMP"
-    die "Could not read from a terminal to paste into. If running "\
-"non-interactively, write $ENV_FILE yourself before running this script."
+    die "There is no terminal to paste into. Write $ENV_FILE yourself "\
+"before running this script unattended."
   fi
   mv "$ENV_FILE_TMP" "$ENV_FILE"
   echo
@@ -330,7 +326,7 @@ db_url_hint="DATABASE_URL=postgresql+asyncpg://"\
 "\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres:5432/\$POSTGRES_DB"
 
 echo
-log "Coolify install step done. The rest happens in its dashboard."
+log "Coolify is installed. The rest happens in its dashboard."
 echo
 echo "Next steps:"
 echo "  1. Visit http://${server_ip}:8000 and complete the one-time root user setup."
@@ -341,13 +337,12 @@ echo "     from $ENV_FILE:"
 echo
 grep -v '^[[:space:]]*#' "$ENV_FILE" | grep -v '^[[:space:]]*$' | sed 's/^/       /'
 echo
-echo "     (DATABASE_URL defaults to SQLite if left unset; to use Postgres"
-echo "      instead, either point it at a Postgres instance you already run, or"
-echo "      paste docker-compose.postgres.yml's own 'postgres:' service block"
-echo "      into this same Compose resource and set"
+echo "     Left unset, DATABASE_URL uses SQLite. For Postgres, either point"
+echo "     it at an instance you already run, or paste the postgres service"
+echo "     block from docker-compose.postgres.yml into this same resource and"
+echo "     set:"
 echo "      $db_url_hint"
-echo "      plus POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB, to opt into"
-echo "      the bundled container)"
+echo "     along with POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB."
 echo "  4. Under each service's Domains and Ports tab, attach:"
 if [ -n "${API_DOMAIN:-}" ] && [ -n "${ADMIN_DOMAIN:-}" ]; then
   echo "       backend -> $API_DOMAIN  (routes to the container's internal port 8000)"
@@ -365,6 +360,6 @@ echo "  6. Create the first admin user via the backend service's 'Execute"
 echo "     Command' action in Coolify:"
 echo "       python -m scripts.create_admin" \
   "${ADMIN_EMAIL:-owner@client-domain.com} '$SUGGESTED_PASSWORD'"
-echo "     (that suggested password is just a random default, not written"
-echo "     anywhere; use your own if you prefer)"
+echo "     That password is a random suggestion and is not saved anywhere."
+echo "     Use your own if you prefer."
 echo

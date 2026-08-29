@@ -2,12 +2,12 @@
 # images from GitHub Container Registry instead of building from source locally.
 #
 # Pin the tag to match your own change-control comfort level via
-# `AIFLOW_VERSION` in `.env`. `2` tracks every `2.x` release, `2.0` tracks
-# patch releases within `2.0` only, and an exact `2.0.0` never moves until
+# `AIFLOW_VERSION` in `.env`. `8` tracks every `8.x` release, `8.0` tracks
+# patch releases within `8.0` only, and an exact `8.0.0` never moves until
 # you bump it yourself.
 services:
   backend:
-    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}
+    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-8}
     env_file:
       - .env
     environment:
@@ -25,7 +25,7 @@ services:
       retries: 3
 
   admin:
-    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-7}
+    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-8}
     environment:
       # This is read at container start rather than baked into the JS bundle,
       # which is what lets one published image serve every client without a rebuild.

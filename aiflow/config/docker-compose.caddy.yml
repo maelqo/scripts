@@ -8,7 +8,7 @@
 # `backend` and `admin` over the internal Compose network instead.
 services:
   backend:
-    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-7}
+    image: ghcr.io/maelqo/aiflow-backend:${AIFLOW_VERSION:-8}
     env_file:
       - .env
     environment:
@@ -26,7 +26,7 @@ services:
       retries: 3
 
   admin:
-    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-7}
+    image: ghcr.io/maelqo/aiflow-admin:${AIFLOW_VERSION:-8}
     environment:
       API_BASE: ${PUBLIC_BASE_URL}
     expose:
