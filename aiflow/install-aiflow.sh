@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
+
 # One command, three deployment topologies. This script is the commercial
 # front door for AiFlow installs, hosted at
 # https://meridflow.com/downloads/install-aiflow.sh.
 #
-# Usage:
-#   curl -fsSL https://meridflow.com/downloads/install-aiflow.sh | sudo bash -s -- \
-#     --option compose|caddy|coolify \
-#     --admin-email you@example.com \
-#     --license-tier pro --license-key AIFLOW1.K1.... \
-#     --api-domain api.client.com --admin-domain admin.client.com \
-#     --install-docker
-#
+
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 

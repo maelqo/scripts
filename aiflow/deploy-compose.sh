@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
+
 # Pulls AiFlow's pre-built images and brings them up with Docker Compose.
-#
-# Usage:
-#   curl -fsSL \
-#     https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-compose.sh \
-#     | bash
-#
-# Flags:
-#   curl -fsSL \
-#     https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-compose.sh \
-#     | bash -s -- --admin-email owner@client.com -y
+
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 

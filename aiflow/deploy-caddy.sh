@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
+
 # Bootstraps a brand-new VPS: brings up Docker Compose with Caddy in
 # front, and Caddy issues and renews the Let's Encrypt certificates on
 # its own.
-#
-# Usage:
-#   curl -fsSL \
-#     https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-caddy.sh \
-#     | bash -s -- --domain client.com --admin-email owner@client.com
-#
+
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
 

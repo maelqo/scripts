@@ -1,5 +1,5 @@
 # Copy to Caddyfile and replace both hostnames with your own domains, then
-# point their DNS A/AAAA records at this server before starting Caddy --
+# point their DNS A/AAAA records at this server before starting Caddy,
 # it issues Let's Encrypt certificates on first request and renews them
 # automatically. Used by docker-compose.caddy.yml.
 

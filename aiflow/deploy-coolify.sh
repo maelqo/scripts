@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
+
 # Installs self-hosted Coolify and stages everything needed to finish the
 # deploy from its dashboard. Coolify's first-run root-user setup only
 # happens in the browser, with nothing scriptable to hook into, so this
 # script installs Coolify and hands off with exact next steps instead of
 # pretending it can automate that part too.
-#
-# Usage:
-#   curl -fsSL \
-#     https://raw.githubusercontent.com/maelqo/scripts/main/aiflow/deploy-coolify.sh \
-#     | sudo bash
 
 set -euo pipefail
 trap 'err "failed at line $LINENO (exit $?)"' ERR
