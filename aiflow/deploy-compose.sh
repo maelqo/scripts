@@ -36,6 +36,28 @@ run_capturing() {
   return "$rc"
 }
 
+# Installing under sudo otherwise leaves everything owned by root, and the
+# account that will actually run the redeploys cannot write to its own
+# deployment directory or reach the docker socket.
+hand_back_to_invoking_user() {
+  [ -n "${SUDO_USER:-}" ] || return 0
+  [ "$SUDO_USER" != "root" ] || return 0
+
+  chown -R "$SUDO_USER" "$DIR" 2>/dev/null \
+    || warn "Could not give $SUDO_USER ownership of $DIR."
+
+  if id -nG "$SUDO_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+    return 0
+  fi
+  if usermod -aG docker "$SUDO_USER" 2>/dev/null; then
+    log "Added $SUDO_USER to the docker group. That account has to log out "\
+"and back in before the change reaches its shell."
+  else
+    warn "Could not add $SUDO_USER to the docker group. Until it is a "\
+"member, that account needs sudo for every docker command."
+  fi
+}
+
 prompt_tty() {
   local prompt="$1" var="$2"
   # Attempting the open is the only reliable test: `/dev/tty` can exist and
@@ -454,5 +476,7 @@ echo "  Metrics stay off until you set METRICS_TOKEN in $DIR/$ENV_FILE."
 echo "  Generate a token, then have your scraper send it as a bearer token:"
 echo "      openssl rand -base64 32"
 echo
+hand_back_to_invoking_user
+
 warn "These ports serve plain HTTP and are not behind TLS yet."
 warn "Put a reverse proxy in front, or run deploy-caddy.sh instead."
