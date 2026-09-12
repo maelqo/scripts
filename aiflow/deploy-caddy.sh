@@ -23,6 +23,34 @@ warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 err()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
+# Asks on the controlling terminal and assigns the answer to the named
+# variable. `read -p` puts its prompt on stderr, so a redirect that hides a
+# missing-tty error hides the question too, leaving the script looking hung.
+# No terminal means no answer, and the caller's own check reports what is
+# missing.
+# Runs a command, showing its output live and capturing a copy for the
+# error branches to inspect. `pipefail` is what keeps the command's own
+# exit status meaningful through the pipe.
+run_capturing() {
+  local out_var="$1"
+  shift
+  local log rc=0
+  log="$(mktemp)"
+  "$@" 2>&1 | tee "$log" || rc=$?
+  printf -v "$out_var" '%s' "$(cat "$log")"
+  rm -f "$log"
+  return "$rc"
+}
+
+prompt_tty() {
+  local prompt="$1" var="$2"
+  # Attempting the open is the only reliable test: `/dev/tty` can exist and
+  # still fail to open with no console attached, and its error is noise.
+  { : >/dev/tty; } 2>/dev/null || return 0
+  printf '%s' "$prompt" >/dev/tty
+  IFS= read -r "$var" </dev/tty || true
+}
+
 usage() {
   cat <<'EOF'
 Usage: deploy-caddy.sh [options]
@@ -144,10 +172,9 @@ gen_password() {
 confirm() {
   [ "$ASSUME_YES" -eq 1 ] && return 0
   local reply=""
-  # Opening `/dev/tty` can fail when there's no controlling terminal
-  # attached. That must not abort the script under `set -e`, so treat a
-  # failed open as a plain `no` and move on.
-  read -r -p "$1 [y/N] " reply 2>/dev/null </dev/tty || true
+  # No controlling terminal means nobody can answer, so treat it as a
+  # plain `no` rather than aborting under `set -e`.
+  prompt_tty "$1 [y/N] " reply
   case "$reply" in [yY]|[yY][eE][sS]) return 0 ;; *) return 1 ;; esac
 }
 
@@ -240,7 +267,7 @@ resolve_host() {
 }
 
 server_ip() {
-  curl -fsS https://api.ipify.org 2>/dev/null || true
+  curl -fsS --connect-timeout 5 --max-time 10 https://api.ipify.org 2>/dev/null || true
 }
 
 check_dns() {
@@ -253,8 +280,7 @@ check_dns() {
 # which still works under `curl | bash` when one is attached. A failed
 # `/dev/tty` open is swallowed here instead of aborting under `set -e`.
 # The `die` call further down catches anything still missing.
-[ -n "$ADMIN_EMAIL" ] \
-  || read -r -p "Admin email: " ADMIN_EMAIL 2>/dev/null </dev/tty || true
+[ -n "$ADMIN_EMAIL" ] || prompt_tty "Admin email: " ADMIN_EMAIL
 [ -n "$ADMIN_EMAIL" ] || die "Missing --admin-email (or AIFLOW_ADMIN_EMAIL)."
 
 case "$LICENSE_TIER" in
@@ -314,7 +340,7 @@ if [ -z "$API_DOMAIN" ] && [ -n "$DOMAIN" ]; then API_DOMAIN="api.$DOMAIN"; fi
 if [ -z "$ADMIN_DOMAIN" ] && [ -n "$DOMAIN" ]; then ADMIN_DOMAIN="admin.$DOMAIN"; fi
 if [ -z "$API_DOMAIN" ] || [ -z "$ADMIN_DOMAIN" ]; then
   if [ -z "$DOMAIN" ]; then
-    read -r -p "Root domain (e.g. client.com): " DOMAIN 2>/dev/null </dev/tty || true
+    prompt_tty "Root domain (e.g. client.com): " DOMAIN
   fi
   [ -z "$API_DOMAIN" ] && [ -n "$DOMAIN" ] && API_DOMAIN="api.$DOMAIN"
   [ -z "$ADMIN_DOMAIN" ] && [ -n "$DOMAIN" ] && ADMIN_DOMAIN="admin.$DOMAIN"
@@ -359,9 +385,9 @@ if [ "$SKIP_DNS_CHECK" -ne 1 ]; then
         # no controlling terminal attached, the common case for
         # `curl | bash`, just fall through and continue past the warning
         # already printed above.
-        dns_reply=""
-        read -r -p "Continue anyway? [y/N] " dns_reply 2>/dev/null </dev/tty \
-          || dns_reply="__no-tty__"
+        dns_reply="__no-tty__"
+        [ -r /dev/tty ] && dns_reply=""
+        prompt_tty "Continue anyway? [y/N] " dns_reply
         if [ "$dns_reply" != "__no-tty__" ]; then
           case "$dns_reply" in
             [yY]|[yY][eE][sS]) : ;;
@@ -509,8 +535,7 @@ if [ -n "$GHCR_TOKEN" ]; then
 fi
 
 log "Pulling images..."
-if ! pull_out="$(docker compose "${COMPOSE_ARGS[@]}" pull 2>&1)"; then
-  printf '%s\n' "$pull_out" >&2
+if ! run_capturing pull_out docker compose "${COMPOSE_ARGS[@]}" pull; then
   if printf '%s' "$pull_out" | grep -qiE 'permission denied' \
     && printf '%s' "$pull_out" \
       | grep -qiE 'docker\.sock|daemon socket|connect to the docker'; then
@@ -532,8 +557,7 @@ if ! pull_out="$(docker compose "${COMPOSE_ARGS[@]}" pull 2>&1)"; then
 fi
 
 log "Starting containers (backend, admin, caddy)..."
-if ! up_out="$(docker compose "${COMPOSE_ARGS[@]}" up -d 2>&1)"; then
-  printf '%s\n' "$up_out" >&2
+if ! run_capturing up_out docker compose "${COMPOSE_ARGS[@]}" up -d; then
   if printf '%s' "$up_out" \
     | grep -qiE 'port is already allocated|address already in use'; then
     die "Port 80 or 443 is already taken, most likely by another web "\
@@ -546,7 +570,8 @@ log "Waiting for https://$API_DOMAIN/health (Caddy issues certificates on "\
 "first request, this can take a minute)..."
 healthy=0
 for _ in $(seq 1 90); do
-  if curl -fsS "https://$API_DOMAIN/health" >/dev/null 2>&1; then
+  if curl -fsS --connect-timeout 5 --max-time 10 \
+      "https://$API_DOMAIN/health" >/dev/null 2>&1; then
     healthy=1
     break
   fi
