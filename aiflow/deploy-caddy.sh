@@ -424,7 +424,13 @@ if [ "$SKIP_DNS_CHECK" -ne 1 ]; then
 fi
 
 mkdir -p "$DIR"
+# Absolute from here on: this script works inside it, and a relative path
+# stops pointing at it the moment the script changes into it.
+DIR="$(cd "$DIR" && pwd)"
 cd "$DIR"
+# On every exit, not only a clean one, so stopping part way leaves nothing
+# under sudo owned by root.
+trap hand_back_to_invoking_user EXIT
 COMPOSE_FILE="docker-compose.caddy.yml"
 COMPOSE_ARGS=(-f "$COMPOSE_FILE")
 
@@ -649,7 +655,5 @@ echo
 echo "  Twilio webhook URLs:"
 echo "    Voice webhook:    https://$API_DOMAIN/api/v1/twilio/inbound"
 echo
-hand_back_to_invoking_user
-
 warn "Open inbound ports 80 and 443 in this server's cloud firewall. "\
 "This script cannot check that from here."

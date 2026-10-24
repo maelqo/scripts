@@ -304,7 +304,13 @@ fi
 check_docker
 
 mkdir -p "$DIR"
+# Absolute from here on: this script works inside it, and a relative path
+# stops pointing at it the moment the script changes into it.
+DIR="$(cd "$DIR" && pwd)"
 cd "$DIR"
+# On every exit, not only a clean one, so stopping part way leaves nothing
+# under sudo owned by root.
+trap hand_back_to_invoking_user EXIT
 COMPOSE_FILE="docker-compose.prod.yml"
 COMPOSE_ARGS=(-f "$COMPOSE_FILE")
 
@@ -476,7 +482,5 @@ echo "  Metrics stay off until you set METRICS_TOKEN in $DIR/$ENV_FILE."
 echo "  Generate a token, then have your scraper send it as a bearer token:"
 echo "      openssl rand -base64 32"
 echo
-hand_back_to_invoking_user
-
 warn "These ports serve plain HTTP and are not behind TLS yet."
 warn "Put a reverse proxy in front, or run deploy-caddy.sh instead."
